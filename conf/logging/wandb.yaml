@@ -1,0 +1,46 @@
+# Weights & Biases Logging Configuration
+name: wandb
+backend: wandb
+
+wandb:
+  # project name in W&B
+  project: flops-benchmarking
+  # entity (team or username)
+  entity: null  # uses default entity
+  # run name (auto-generated if null)
+  run_name: null
+  # run tags
+  tags: []
+  # run notes
+  notes: null
+  # sync mode: online, offline, disabled
+  mode: online
+  # log frequency (every n rounds)
+  log_every_n_rounds: 1
+
+# also save offline logs
+offline:
+  enabled: true
+  save_dir: ${experiment.output_dir}/logs
+  # log formats
+  formats:
+    - json
+    - csv
+
+# console logging
+console:
+  level: INFO
+
+# what to log
+log_config:
+  # training metrics
+  metrics: true
+  # model parameters
+  parameters: true
+  # gradients
+  gradients: true
+  # system metrics
+  system_metrics: true
+  # per-client metrics
+  per_client: true
+

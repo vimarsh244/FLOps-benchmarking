@@ -1,0 +1,9 @@
+# SCAFFOLD Strategy Configuration
+name: scaffold
+_target_: src.strategies.scaffold.SCAFFOLD
+
+# SCAFFOLD specific parameters
+server_lr: 1.0       # server-side learning rate
+client_lr: 0.01      # client-side learning rate
+warm_start: false    # whether to use warm start for control variates
+

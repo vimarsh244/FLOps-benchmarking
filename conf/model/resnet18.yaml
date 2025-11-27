@@ -1,0 +1,7 @@
+# ResNet18 Model Configuration
+name: resnet18
+_target_: src.models.resnet.ResNet18
+
+# resnet specific parameters
+pretrained: false  # whether to use pretrained weights
+

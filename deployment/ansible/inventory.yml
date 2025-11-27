@@ -1,0 +1,58 @@
+# ansible inventory for flops benchmarking
+# edit this file to match your device configuration
+
+all:
+  children:
+    # server group (usually just one host)
+    servers:
+      hosts:
+        server:
+          ansible_host: localhost
+          ansible_connection: local
+    
+    # raspberry pi devices
+    raspberry_pi:
+      hosts:
+        rpi5-1:
+          ansible_host: 192.168.1.101
+          ansible_user: pi
+          partition_id: 0
+          device_type: raspberry_pi_5
+        rpi5-2:
+          ansible_host: 192.168.1.102
+          ansible_user: pi
+          partition_id: 1
+          device_type: raspberry_pi_5
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+        python_env: ~/envs/flops/bin/python
+    
+    # jetson devices
+    jetson:
+      hosts:
+        orin-nx-1:
+          ansible_host: 192.168.1.103
+          ansible_user: nvidia
+          partition_id: 2
+          device_type: jetson_orin_nx
+        orin-nano-1:
+          ansible_host: 192.168.1.104
+          ansible_user: nvidia
+          partition_id: 3
+          device_type: jetson_orin_nano
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+        python_env: ~/envs/flops/bin/python
+    
+    # all client devices
+    clients:
+      children:
+        raspberry_pi:
+        jetson:
+
+  vars:
+    # common variables for all hosts
+    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    flops_repo_path: ~/flops-benchmarking
+    server_address: "192.168.1.100:8080"
+

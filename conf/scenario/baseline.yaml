@@ -1,0 +1,8 @@
+# Baseline Scenario Configuration
+# All clients participate in every round - no drops or timeouts
+name: baseline
+_target_: src.scenarios.base.BaseScenario
+
+# no special behavior
+enabled: false
+

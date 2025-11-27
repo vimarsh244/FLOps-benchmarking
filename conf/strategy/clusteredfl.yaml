@@ -1,0 +1,13 @@
+# Clustered FL Strategy Configuration
+name: clusteredfl
+_target_: src.strategies.clusteredfl.CustomClusteredFL
+
+# ClusteredFL specific parameters
+eps1_mean_update_norm: 0.05  # threshold for mean update norm to trigger split
+eps2_max_update_norm: 0.2   # threshold for max update norm to trigger split
+split_warmup_rounds: 5      # rounds to wait before allowing splits
+split_cooldown_rounds: 3    # rounds to wait between splits
+min_clients_for_split: 3    # minimum clients in cluster to consider split
+min_cluster_size: 2         # minimum clients per resulting cluster
+max_kmeans_iters: 10        # max iterations for spherical k-means
+

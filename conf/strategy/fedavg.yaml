@@ -1,0 +1,7 @@
+# FedAvg Strategy Configuration
+name: fedavg
+_target_: src.strategies.fedavg.CustomFedAvg
+
+# FedAvg specific parameters
+inplace: true  # use in-place aggregation for memory efficiency
+

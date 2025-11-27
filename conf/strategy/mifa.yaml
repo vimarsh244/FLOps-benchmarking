@@ -1,0 +1,8 @@
+# MIFA Strategy Configuration
+name: mifa
+_target_: src.strategies.mifa.CustomMIFA
+
+# MIFA specific parameters
+base_server_lr: 0.1  # base server learning rate (decays as 1/t)
+wait_for_all_clients_init: true  # wait for all clients before starting updates
+

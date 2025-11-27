@@ -1,0 +1,23 @@
+# Simulation Hardware Configuration
+# Uses Flower's simulation mode with Ray backend
+name: simulation
+mode: simulation
+
+# ray backend configuration
+ray:
+  # number of CPUs to use for simulation
+  num_cpus: 8
+  # number of GPUs to use (can be fractional)
+  num_gpus: 2
+  # resources per client
+  client_resources:
+    num_cpus: 2
+    num_gpus: 0.5
+
+# simulation specific settings
+simulation:
+  # enable verbose logging
+  verbose: false
+  # actor kwargs for ray
+  actor_kwargs: {}
+

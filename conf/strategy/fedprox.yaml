@@ -1,0 +1,7 @@
+# FedProx Strategy Configuration
+name: fedprox
+_target_: src.strategies.fedprox.CustomFedProx
+
+# FedProx specific parameters
+proximal_mu: 0.1  # proximal term coefficient (higher = more regularization)
+

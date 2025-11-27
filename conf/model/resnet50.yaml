@@ -1,0 +1,7 @@
+# ResNet50 Model Configuration
+name: resnet50
+_target_: src.models.resnet.ResNet50
+
+# resnet specific parameters
+pretrained: false  # whether to use pretrained weights
+

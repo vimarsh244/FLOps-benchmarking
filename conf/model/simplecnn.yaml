@@ -1,0 +1,7 @@
+# SimpleCNN Model Configuration
+name: simplecnn
+_target_: src.models.simple_cnn.SimpleCNN
+
+# model architecture parameters
+# uses default architecture from task.py
+

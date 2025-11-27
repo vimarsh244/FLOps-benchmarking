@@ -1,0 +1,7 @@
+# IID Partitioner Configuration
+# Data is distributed uniformly across all clients
+name: iid
+_target_: flwr_datasets.partitioner.IidPartitioner
+
+# no additional parameters for IID partitioning
+

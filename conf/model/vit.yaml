@@ -1,0 +1,10 @@
+# Vision Transformer (ViT) Model Configuration
+name: vit
+_target_: src.models.vit.ViT
+
+# ViT specific parameters
+model_name: vit_tiny_patch16_224  # timm model name
+pretrained: false
+image_size: 224  # will resize input to this
+patch_size: 16
+

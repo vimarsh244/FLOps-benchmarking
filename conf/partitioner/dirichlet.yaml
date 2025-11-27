@@ -1,0 +1,19 @@
+# Dirichlet (Non-IID) Partitioner Configuration
+# Data is distributed according to Dirichlet distribution
+name: dirichlet
+_target_: flwr_datasets.partitioner.DirichletPartitioner
+
+# dirichlet distribution parameter
+# lower alpha = more heterogeneous (non-iid)
+# alpha = 0.1: very non-iid
+# alpha = 0.5: moderately non-iid
+# alpha = 1.0: mildly non-iid
+# alpha = 10.0: almost iid
+alpha: 0.5
+
+# partition by label
+partition_by: label
+
+# random seed for reproducibility
+seed: 42
+

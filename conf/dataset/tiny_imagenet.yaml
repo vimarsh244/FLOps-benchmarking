@@ -1,0 +1,28 @@
+# Tiny-ImageNet Dataset Configuration
+name: tiny_imagenet
+_target_: src.datasets.loader.load_data
+
+# dataset identifier for flwr-datasets / huggingface
+dataset_name: zh-plus/tiny-imagenet
+num_classes: 200
+
+# image properties
+image_size: 64
+channels: 3
+
+# normalization values (ImageNet stats)
+normalize:
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+
+# data augmentation
+augmentation:
+  train:
+    random_crop: true
+    random_horizontal_flip: true
+    resize: 64
+  test:
+    random_crop: false
+    random_horizontal_flip: false
+    resize: 64
+

@@ -1,0 +1,61 @@
+---
+# setup python environment on all client devices
+
+- name: Setup FLOps Environment
+  hosts: clients
+  become: false
+  
+  vars:
+    python_version: "3.10"
+    venv_path: "~/envs/flops"
+    repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+  
+  tasks:
+    - name: Update apt cache
+      become: true
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+    
+    - name: Install system dependencies
+      become: true
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - git
+          - build-essential
+          - libffi-dev
+          - libssl-dev
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Create virtual environment directory
+      file:
+        path: "{{ venv_path | dirname }}"
+        state: directory
+        mode: '0755'
+    
+    - name: Create Python virtual environment
+      command: "python3 -m venv {{ venv_path }}"
+      args:
+        creates: "{{ venv_path }}/bin/activate"
+    
+    - name: Upgrade pip in virtual environment
+      pip:
+        name: pip
+        state: latest
+        virtualenv: "{{ venv_path }}"
+    
+    - name: Create flops directory
+      file:
+        path: "{{ repo_path }}"
+        state: directory
+        mode: '0755'
+    
+    - name: Display environment info
+      debug:
+        msg: "Environment ready at {{ venv_path }} on {{ inventory_hostname }}"
+

@@ -1,0 +1,56 @@
+# Distributed Hardware Configuration
+# Runs on physical devices via SSH
+name: distributed
+mode: distributed
+
+# server configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  # SSL/TLS configuration (optional)
+  ssl:
+    enabled: false
+    cert_path: null
+    key_path: null
+
+# client devices configuration
+devices:
+  # list of devices with their connection info
+  - name: rpi5-1
+    host: 192.168.1.101
+    user: pi
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+    
+  - name: rpi5-2
+    host: 192.168.1.102
+    user: pi
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+    
+  - name: orin-nx-1
+    host: 192.168.1.103
+    user: nvidia
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: jetson_orin_nx
+    
+  - name: orin-nano-1
+    host: 192.168.1.104
+    user: nvidia
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: jetson_orin_nano
+
+# deployment settings
+deployment:
+  # use ansible for orchestration
+  use_ansible: true
+  ansible_inventory: deployment/ansible/inventory.yml
+  # sync code before running
+  sync_code: true
+  # path on remote devices
+  remote_path: ~/flops-benchmarking
+

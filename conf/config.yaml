@@ -1,0 +1,57 @@
+# FLOps Benchmarking - Main Configuration
+# Use Hydra to override any of these settings
+
+defaults:
+  - strategy: fedavg
+  - dataset: cifar10
+  - model: resnet18
+  - scenario: baseline
+  - partitioner: iid
+  - hardware: simulation
+  - logging: wandb
+  - _self_
+
+# experiment identification
+experiment:
+  name: ${strategy.name}_${dataset.name}_${model.name}_${scenario.name}
+  seed: 42
+  output_dir: outputs/${experiment.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# server configuration
+server:
+  num_rounds: 50
+  fraction_fit: 1.0
+  fraction_evaluate: 1.0
+  min_fit_clients: 5
+  min_evaluate_clients: 5
+  min_available_clients: 5
+  accept_failures: true
+
+# client configuration  
+client:
+  num_clients: 10
+  local_epochs: 1
+  batch_size: 32
+  learning_rate: 0.01
+  optimizer: adam
+  weight_decay: 0.0
+
+# training configuration
+training:
+  device: auto  # auto, cpu, cuda, mps
+  use_amp: false  # automatic mixed precision
+  gradient_clip: null  # gradient clipping value
+  
+# evaluation configuration
+evaluation:
+  test_fraction: 0.2
+  eval_every_n_rounds: 1
+
+# hydra configuration
+hydra:
+  run:
+    dir: ${experiment.output_dir}
+  sweep:
+    dir: outputs/multirun/${now:%Y-%m-%d_%H-%M-%S}
+    subdir: ${hydra.job.num}
+

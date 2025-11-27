@@ -1,0 +1,36 @@
+---
+# synchronize code to all client devices
+
+- name: Sync FLOps Code
+  hosts: clients
+  become: false
+  
+  vars:
+    local_repo_path: "{{ playbook_dir }}/../../"
+    remote_repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+  
+  tasks:
+    - name: Synchronize code to remote devices
+      synchronize:
+        src: "{{ local_repo_path }}"
+        dest: "{{ remote_repo_path }}"
+        delete: yes
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+          - "--exclude=outputs/"
+          - "--exclude=.venv"
+          - "--exclude=*.egg-info"
+      delegate_to: localhost
+    
+    - name: Install Python dependencies
+      pip:
+        requirements: "{{ remote_repo_path }}/requirements.txt"
+        virtualenv: "{{ python_env | dirname | dirname }}"
+        state: present
+    
+    - name: Display sync status
+      debug:
+        msg: "Code synced to {{ inventory_hostname }}:{{ remote_repo_path }}"
+

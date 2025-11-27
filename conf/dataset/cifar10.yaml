@@ -1,0 +1,26 @@
+# CIFAR-10 Dataset Configuration
+name: cifar10
+_target_: src.datasets.loader.load_data
+
+# dataset identifier for flwr-datasets
+dataset_name: uoft-cs/cifar10
+num_classes: 10
+
+# image properties
+image_size: 32
+channels: 3
+
+# normalization values
+normalize:
+  mean: [0.4914, 0.4822, 0.4465]
+  std: [0.2470, 0.2435, 0.2616]
+
+# data augmentation
+augmentation:
+  train:
+    random_crop: true
+    random_horizontal_flip: true
+  test:
+    random_crop: false
+    random_horizontal_flip: false
+

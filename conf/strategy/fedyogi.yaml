@@ -1,0 +1,10 @@
+# FedYogi Strategy Configuration (FedOpt variant)
+name: fedyogi
+_target_: src.strategies.fedopt.FedYogi
+
+# FedYogi specific parameters
+server_lr: 0.01     # server-side learning rate (eta)
+beta_1: 0.9         # first moment decay
+beta_2: 0.99        # second moment decay
+tau: 1e-3           # adaptivity parameter
+

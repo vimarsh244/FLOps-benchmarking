@@ -1,0 +1,80 @@
+---
+# run distributed fl experiment
+
+- name: Start FL Server
+  hosts: servers
+  become: false
+  
+  vars:
+    repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+    server_host: "{{ ansible_host | default('0.0.0.0') }}"
+    server_port: "{{ server_port | default(8080) }}"
+    num_rounds: "{{ num_rounds | default(50) }}"
+  
+  tasks:
+    - name: Start Flower server
+      shell: |
+        cd {{ repo_path }}
+        nohup python -m src.run_distributed server \
+          --host {{ server_host }} \
+          --port {{ server_port }} \
+          --num-rounds {{ num_rounds }} \
+          > server.log 2>&1 &
+        echo $!
+      register: server_pid
+      async: 10
+      poll: 0
+    
+    - name: Wait for server to start
+      wait_for:
+        port: "{{ server_port }}"
+        delay: 2
+        timeout: 30
+    
+    - name: Display server info
+      debug:
+        msg: "Server started on {{ server_host }}:{{ server_port }}"
+
+
+- name: Start FL Clients
+  hosts: clients
+  become: false
+  
+  vars:
+    repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+    server_address: "{{ server_address | default('localhost:8080') }}"
+  
+  tasks:
+    - name: Start Flower client
+      shell: |
+        cd {{ repo_path }}
+        {{ python_env }} -m src.run_distributed client \
+          --server-address {{ server_address }} \
+          --partition-id {{ partition_id }} \
+          > client_{{ partition_id }}.log 2>&1
+      async: 7200  # 2 hour timeout
+      poll: 0
+      register: client_job
+    
+    - name: Display client info
+      debug:
+        msg: "Client {{ partition_id }} started on {{ inventory_hostname }}, connecting to {{ server_address }}"
+
+
+- name: Wait for Experiment Completion
+  hosts: clients
+  become: false
+  
+  tasks:
+    - name: Wait for client completion
+      async_status:
+        jid: "{{ client_job.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 720  # 2 hours at 10s intervals
+      delay: 10
+    
+    - name: Display completion status
+      debug:
+        msg: "Client {{ partition_id }} completed with status {{ job_result.rc | default('unknown') }}"
+

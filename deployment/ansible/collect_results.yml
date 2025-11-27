@@ -1,0 +1,68 @@
+---
+# collect results from all devices after experiment
+
+- name: Collect Experiment Results
+  hosts: clients
+  become: false
+  
+  vars:
+    repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+    local_results_dir: "{{ playbook_dir }}/../../results/{{ experiment_name | default('experiment') }}"
+  
+  tasks:
+    - name: Create local results directory
+      file:
+        path: "{{ local_results_dir }}/{{ inventory_hostname }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+    
+    - name: Fetch client logs
+      fetch:
+        src: "{{ repo_path }}/client_{{ partition_id }}.log"
+        dest: "{{ local_results_dir }}/{{ inventory_hostname }}/"
+        flat: yes
+      ignore_errors: yes
+    
+    - name: Fetch output files
+      fetch:
+        src: "{{ repo_path }}/outputs/"
+        dest: "{{ local_results_dir }}/{{ inventory_hostname }}/"
+        flat: no
+      ignore_errors: yes
+    
+    - name: Display fetch status
+      debug:
+        msg: "Results collected from {{ inventory_hostname }}"
+
+
+- name: Collect Server Results
+  hosts: servers
+  become: false
+  
+  vars:
+    repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+    local_results_dir: "{{ playbook_dir }}/../../results/{{ experiment_name | default('experiment') }}"
+  
+  tasks:
+    - name: Create local results directory
+      file:
+        path: "{{ local_results_dir }}/server"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+    
+    - name: Fetch server logs
+      fetch:
+        src: "{{ repo_path }}/server.log"
+        dest: "{{ local_results_dir }}/server/"
+        flat: yes
+      ignore_errors: yes
+    
+    - name: Fetch server outputs
+      fetch:
+        src: "{{ repo_path }}/outputs/"
+        dest: "{{ local_results_dir }}/server/"
+        flat: no
+      ignore_errors: yes
+

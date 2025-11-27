@@ -1,0 +1,29 @@
+# Timeout Scenario Configuration
+# Simulates timeouts for straggler nodes
+name: timeout
+_target_: src.scenarios.timeout.TimeoutScenario
+
+enabled: true
+
+# timeout configuration
+timeout_seconds: 30.0  # maximum time to wait for client response
+
+# straggler simulation (for simulation mode)
+simulate_stragglers:
+  enabled: true
+  # probability that a client becomes a straggler
+  straggler_probability: 0.2
+  # delay multiplier for stragglers (e.g., 2.0 = 2x normal time)
+  delay_multiplier: 3.0
+  # specific clients to always be stragglers (optional)
+  fixed_straggler_ids: []
+
+# behavior when timeout occurs
+on_timeout:
+  # skip: skip the client for this round
+  # retry: retry the client (with backoff)
+  # fail: mark as failure
+  action: skip
+  max_retries: 1
+  retry_delay: 5.0
+

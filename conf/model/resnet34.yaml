@@ -1,0 +1,7 @@
+# ResNet34 Model Configuration
+name: resnet34
+_target_: src.models.resnet.ResNet34
+
+# resnet specific parameters
+pretrained: false  # whether to use pretrained weights
+

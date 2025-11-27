@@ -1,0 +1,50 @@
+# @package _global_
+# Tiny ImageNet experiment with SCAFFOLD (best for non-iid)
+
+defaults:
+  - override /dataset: tiny_imagenet
+  - override /model: resnet18
+  - override /strategy: scaffold
+  - override /partitioner: dirichlet
+  - override /scenario: baseline
+  - override /logging: wandb
+
+experiment:
+  name: tiny_imagenet_100clients_scaffold
+  seed: 42
+
+server:
+  num_rounds: 100
+  fraction_fit: 0.1
+  fraction_evaluate: 0.1
+  min_fit_clients: 10
+  min_evaluate_clients: 10
+  min_available_clients: 100
+  accept_failures: true
+
+client:
+  num_clients: 100
+  local_epochs: 3
+  batch_size: 64
+  learning_rate: 0.001
+  optimizer: adam
+
+# scaffold specific config
+strategy:
+  server_lr: 1.0
+  client_lr: 0.001
+
+partitioner:
+  alpha: 0.5
+
+training:
+  device: auto
+
+hardware:
+  ray:
+    num_cpus: 8
+    num_gpus: 2
+    client_resources:
+      num_cpus: 1
+      num_gpus: 0.1
+

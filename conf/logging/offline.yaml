@@ -1,0 +1,42 @@
+# Offline Logging Configuration
+# Saves logs locally without external services
+name: offline
+backend: offline
+
+offline:
+  enabled: true
+  save_dir: ${experiment.output_dir}/logs
+  
+  # log formats to save
+  formats:
+    - json   # structured json logs
+    - csv    # tabular csv for easy analysis
+  
+  # file naming
+  metrics_file: metrics
+  system_file: system_metrics
+  client_file: client_metrics
+  
+  # compression
+  compress: false  # gzip compress log files
+
+# what to log
+log_config:
+  # training metrics
+  metrics: true
+  # model checkpoints
+  save_checkpoints: true
+  checkpoint_every_n_rounds: 10
+  # system metrics
+  system_metrics: true
+  # per-client metrics
+  per_client: true
+  # timing information
+  timing: true
+
+# console output
+console:
+  enabled: true
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  format: "[%(asctime)s] %(levelname)s - %(message)s"
+
