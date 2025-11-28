@@ -84,37 +84,37 @@ def log_round_metrics(
     """
     global _wandb_run
     
-    if _wandb_run is None:
-        return
+    # build log dict for both console and wandb
+    log_dict = {"round": round_num}
     
-    try:
-        import wandb
-        
-        log_dict = {"round": round_num}
-        
-        # add fit metrics with train_ prefix
-        if fit_metrics:
-            for k, v in fit_metrics.items():
-                if isinstance(v, (int, float)):
-                    log_dict[f"train/{k}"] = v
-        
-        # add eval metrics with eval_ prefix
-        if evaluate_metrics:
-            for k, v in evaluate_metrics.items():
-                if isinstance(v, (int, float)):
-                    log_dict[f"eval/{k}"] = v
-        
-        # add loss
-        if loss is not None:
-            log_dict["eval/loss"] = loss
-        
-        # log to wandb with round as step
-        wandb.log(log_dict, step=round_num)
-        
-        _logger.info(f"Round {round_num} metrics logged to wandb: {log_dict}")
-        
-    except Exception as e:
-        _logger.warning(f"Failed to log round metrics to wandb: {e}")
+    # add fit metrics with train_ prefix
+    if fit_metrics:
+        for k, v in fit_metrics.items():
+            if isinstance(v, (int, float)):
+                log_dict[f"train/{k}"] = v
+    
+    # add eval metrics with eval_ prefix
+    if evaluate_metrics:
+        for k, v in evaluate_metrics.items():
+            if isinstance(v, (int, float)):
+                log_dict[f"eval/{k}"] = v
+    
+    # add loss
+    if loss is not None:
+        log_dict["eval/loss"] = loss
+    
+    # always log to console so user can see progress
+    metrics_str = ", ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" for k, v in log_dict.items())
+    _logger.info(f"Round {round_num} metrics: {metrics_str}")
+    
+    # log to wandb if available
+    if _wandb_run is not None:
+        try:
+            import wandb
+            wandb.log(log_dict, step=round_num)
+            _logger.debug(f"Round {round_num} metrics logged to wandb")
+        except Exception as e:
+            _logger.warning(f"Failed to log round metrics to wandb: {e}")
 
 
 def finish_wandb() -> None:

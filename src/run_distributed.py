@@ -161,6 +161,7 @@ def run_with_ssh(
         remote_path: Path on remote devices
     """
     logger = get_logger()
+
     logger.info("Running with direct SSH connections")
     
     server_cfg = cfg.hardware.get("server", {})
