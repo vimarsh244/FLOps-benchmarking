@@ -305,7 +305,7 @@ def run_server(cfg: DictConfig) -> None:
     server_cfg = cfg.hardware.get("server", {})
     host = server_cfg.get("host", "0.0.0.0")
     port = server_cfg.get("port", 8080)
-    num_rounds = cfg.server.get("num_rounds", 50)
+    num_rounds = cfg.server.get("num_rounds")
     
     logger.info(f"Starting Flower server on {host}:{port} for {num_rounds} rounds")
     
@@ -389,11 +389,6 @@ if __name__ == "__main__":
     server_parser = subparsers.add_parser("server", help="Run the Flower Server")
     server_parser.add_argument("--host", type=str, default="0.0.0.0", help="Server bind host")
     server_parser.add_argument("--port", type=int, default=8080, help="Server bind port")
-    server_parser.add_argument("--num-rounds", type=int, default=50, help="Number of FL rounds")
-    server_parser.add_argument("--wandb", action="store_true", help="Enable wandb logging on server")
-    server_parser.add_argument("--wandb-project", type=str, default=None, help="Wandb project name")
-    server_parser.add_argument("--wandb-name", type=str, default=None, help="Wandb run name")
-
     # Client subcommand
     client_parser = subparsers.add_parser("client", help="Run a Flower Client")
     client_parser.add_argument("--server-address", type=str, required=True, help="Server address (IP:PORT)")
@@ -420,7 +415,6 @@ if __name__ == "__main__":
             
             if "server" not in cfg:
                 cfg.server = {}
-            cfg.server.num_rounds = args.num_rounds
             
             # handle wandb configuration from CLI
             if "logging" not in cfg:
