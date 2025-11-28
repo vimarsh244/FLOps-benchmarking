@@ -95,6 +95,22 @@
       HF_HUB_OFFLINE: "1"
   
   tasks:
+    - name: Synchronize code to client devices
+      synchronize:
+        src: "{{ repo_path }}"
+        dest: "{{ repo_path }}"
+        delete: yes
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+          - "--exclude=outputs/"
+          - "--exclude=.venv"
+          - "--exclude=*.egg-info"
+          - "--exclude=deployment" 
+      delegate_to: localhost
+
+      
     - name: Start Flower client
       shell: |
         cd {{ repo_path }}
