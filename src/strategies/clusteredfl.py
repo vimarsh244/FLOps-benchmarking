@@ -327,11 +327,20 @@ class CustomClusteredFL(Strategy):
         if not self.accept_failures and failures:
             return None, {}
 
+        # filter out disconnected clients (those with num_examples=0 or empty parameters)
+        valid_results = [
+            (client, res) for client, res in results
+            if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
+        ]
+        
+        if not valid_results:
+            return None, {}
+
         # group results by cluster
         round_assign = self._round_assignments.get(server_round, {})
         grouped: Dict[int, List[Tuple[str, NDArrays, int]]] = defaultdict(list)
 
-        for client, fit_res in results:
+        for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             params_nd = parameters_to_ndarrays(fit_res.parameters)
             n = fit_res.num_examples
@@ -437,10 +446,10 @@ class CustomClusteredFL(Strategy):
                 accum if accum is not None else next(iter(self._cluster_models.values()))
             )
 
-        # aggregate metrics
+        # aggregate metrics (use valid_results for metrics)
         metrics_aggregated: Dict[str, Scalar] = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
         # log fit metrics to wandb

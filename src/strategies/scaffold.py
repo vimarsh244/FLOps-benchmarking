@@ -227,6 +227,15 @@ class SCAFFOLD(Strategy):
         if not self.accept_failures and failures:
             return None, {}
 
+        # filter out disconnected clients (those with num_examples=0 or empty parameters)
+        valid_results = [
+            (client, res) for client, res in results
+            if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
+        ]
+        
+        if not valid_results:
+            return None, {}
+
         # determine number of parameters in model
         num_model_params = len(self._global_model)
 
@@ -234,7 +243,7 @@ class SCAFFOLD(Strategy):
         model_updates: List[Tuple[NDArrays, int]] = []
         control_updates: List[NDArrays] = []
 
-        for client, fit_res in results:
+        for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             all_params = parameters_to_ndarrays(fit_res.parameters)
             
@@ -262,7 +271,7 @@ class SCAFFOLD(Strategy):
             add_inplace(agg_delta_y, delta_y, alpha=weight)
 
         # aggregate control updates
-        num_clients = len(results)
+        num_clients = len(valid_results)
         agg_delta_c = zeros_like(self._global_model)
         for delta_c in control_updates:
             add_inplace(agg_delta_c, delta_c, alpha=1.0 / num_clients)

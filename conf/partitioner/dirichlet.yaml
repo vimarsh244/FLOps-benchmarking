@@ -14,6 +14,9 @@ alpha: 0.5
 # partition by label
 partition_by: label
 
+# for cifar10,
+# partition by label
+
 # random seed for reproducibility
 seed: 42
 

@@ -135,7 +135,7 @@ class FlowerClient(NumPyClient):
         
         # check if client should participate (node drop scenario)
         if not self._should_participate(current_round):
-            print(f"[Client {self.partition_id}] Disconnected for round {current_round}")
+            print(f"[Client {self.partition_id}] DROPPED for round {current_round}")
             # return garbage to signal disconnection
             return [], 0, {"disconnected": True}
         
@@ -178,6 +178,10 @@ class FlowerClient(NumPyClient):
     ) -> Tuple[float, int, Dict[str, Scalar]]:
         """Evaluate the model on local test data.
         
+        Note: Evaluation always runs on ALL clients regardless of node drop status.
+        This ensures we measure true model performance on the full dataset.
+        Node drop only affects training, not evaluation.
+        
         Args:
             parameters: Model parameters from server
             config: Configuration from server
@@ -185,13 +189,6 @@ class FlowerClient(NumPyClient):
         Returns:
             Tuple of (loss, num_examples, metrics)
         """
-        current_round = config.get("current_round", 0)
-        
-        # check if client should participate
-        if not self._should_participate(current_round):
-            print(f"[Client {self.partition_id}] Disconnected for evaluation round {current_round}")
-            return 0.0, 0, {"disconnected": True}
-        
         start_time = time.time()
         
         self.set_parameters(parameters)

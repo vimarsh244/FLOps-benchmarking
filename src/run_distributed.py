@@ -9,7 +9,10 @@ from dataclasses import dataclass
 
 from omegaconf import DictConfig
 
+from src.utils.helpers import load_env_file
 from src.utils.logging import get_logger, setup_logging
+
+load_env_file()
 
 
 @dataclass

@@ -221,21 +221,33 @@ class CustomMIFA(Strategy):
         if not self.accept_failures and failures:
             return None, {}
 
-        if self._latest_global is None:
-            self._latest_global = parameters_to_ndarrays(results[0][1].parameters)
+        # filter out disconnected clients (those with num_examples=0 or empty parameters)
+        valid_results = [
+            (client, res) for client, res in results
+            if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
+        ]
+        
+        if not valid_results:
+            # return current global if no valid results
+            if self._latest_global is not None:
+                return ndarrays_to_parameters(self._latest_global), {}
+            return None, {}
 
-        # expand known clients set
+        if self._latest_global is None:
+            self._latest_global = parameters_to_ndarrays(valid_results[0][1].parameters)
+
+        # expand known clients set (use all results to track client IDs)
         for client, _ in results:
             cid = getattr(client, "cid", None) or str(client)
             self._all_client_ids.add(cid)
 
         self._ensure_table_entries()
 
-        # compute normalized updates
+        # compute normalized updates (only for valid results)
         eta_t = self._current_eta()
         old_global = copy_weights(self._latest_global)
 
-        for client, fit_res in results:
+        for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             w_i = parameters_to_ndarrays(fit_res.parameters)
             # delta = (w_i - w_t) / eta_t
@@ -257,7 +269,7 @@ class CustomMIFA(Strategy):
                 params = ndarrays_to_parameters(self._latest_global)
                 metrics_aggregated = {}
                 if self.fit_metrics_aggregation_fn:
-                    fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+                    fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
                     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
                 return params, metrics_aggregated
             self._table_initialized = True
@@ -277,10 +289,10 @@ class CustomMIFA(Strategy):
 
         params = ndarrays_to_parameters(self._latest_global)
 
-        # aggregate metrics
+        # aggregate metrics (use valid_results for metrics)
         metrics_aggregated: Dict[str, Scalar] = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
         # log fit metrics to wandb

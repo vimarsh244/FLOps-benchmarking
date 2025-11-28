@@ -220,8 +220,17 @@ class FedOptBase(Strategy):
         if not self.accept_failures and failures:
             return None, {}
 
+        # filter out disconnected clients (those with num_examples=0 or empty parameters)
+        valid_results = [
+            (client, res) for client, res in results
+            if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
+        ]
+        
+        if not valid_results:
+            return None, {}
+
         # compute pseudo-gradient
-        delta = self._compute_pseudo_gradient(results)
+        delta = self._compute_pseudo_gradient(valid_results)
 
         # update first moment: m = beta_1 * m + (1 - beta_1) * delta
         for i in range(len(self._m)):
@@ -242,10 +251,10 @@ class FedOptBase(Strategy):
 
         params = ndarrays_to_parameters(self._global_model)
 
-        # aggregate metrics
+        # aggregate metrics (use valid_results for metrics)
         metrics_aggregated: Dict[str, Scalar] = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
         # log fit metrics to wandb
