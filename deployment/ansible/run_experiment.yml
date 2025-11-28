@@ -35,10 +35,6 @@
         nohup {{ python_env }} -u -m src.run_distributed server \
           --host {{ ansible_host | default('0.0.0.0') }} \
           --port {{ server_port | default(8080) }} \
-          --num-rounds {{ num_rounds | default(50) }} \
-          {% if enable_wandb | bool %}--wandb{% endif %} \
-          {% if wandb_project_name %}--wandb-project {{ wandb_project_name }}{% endif %} \
-          {% if wandb_run_name %}--wandb-name {{ wandb_run_name }}{% endif %} \
           > server.log 2>&1 &
         echo $!
       register: server_pid

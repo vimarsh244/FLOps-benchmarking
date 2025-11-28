@@ -22,9 +22,9 @@ server:
   num_rounds: 2
   fraction_fit: 1.0
   fraction_evaluate: 1.0
-  min_fit_clients: 5
-  min_evaluate_clients: 5
-  min_available_clients: 5
+  min_fit_clients: 15
+  min_evaluate_clients: 15
+  min_available_clients: 15
   accept_failures: true
 
 # client configuration  
