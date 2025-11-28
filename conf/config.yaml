@@ -7,7 +7,7 @@ defaults:
   - model: resnet18
   - scenario: baseline
   - partitioner: iid
-  - hardware: simulation
+  - hardware: distributed
   - logging: wandb
   - _self_
 
@@ -29,7 +29,8 @@ server:
 
 # client configuration  
 client:
-  num_clients: 10
+  # CHANGE THIS FROM 10 TO 20 (or total number of devices you have)
+  num_clients: 20  
   local_epochs: 1
   batch_size: 32
   learning_rate: 0.01
@@ -54,4 +55,3 @@ hydra:
   sweep:
     dir: outputs/multirun/${now:%Y-%m-%d_%H-%M-%S}
     subdir: ${hydra.job.num}
-

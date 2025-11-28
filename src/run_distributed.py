@@ -2,12 +2,15 @@
 
 import subprocess
 import time
+import argparse
+import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
-from omegaconf import DictConfig
+import hydra
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from src.utils.logging import get_logger, setup_logging
 
@@ -229,16 +232,18 @@ def run_server(cfg: DictConfig) -> None:
     strategy = create_strategy(cfg, initial_parameters=initial_parameters)
     
     # server config
+    # Use config values, potentially overridden by CLI args
     server_cfg = cfg.hardware.get("server", {})
     host = server_cfg.get("host", "0.0.0.0")
     port = server_cfg.get("port", 8080)
+    num_rounds = cfg.server.get("num_rounds", 50)
     
-    logger.info(f"Starting Flower server on {host}:{port}")
+    logger.info(f"Starting Flower server on {host}:{port} for {num_rounds} rounds")
     
     # start server
     fl.server.start_server(
         server_address=f"{host}:{port}",
-        config=fl.server.ServerConfig(num_rounds=cfg.server.num_rounds),
+        config=fl.server.ServerConfig(num_rounds=num_rounds),
         strategy=strategy,
     )
 
@@ -296,3 +301,49 @@ def run_client(
         client=client.to_client(),
     )
 
+if __name__ == "__main__":
+    # Initialize logging
+    setup_logging()
+    
+    # Argument parser
+    parser = argparse.ArgumentParser(description="Flower Distributed Runner")
+    subparsers = parser.add_subparsers(dest="mode", required=True, help="Mode to run: server or client")
+
+    # Server subcommand
+    server_parser = subparsers.add_parser("server", help="Run the Flower Server")
+    server_parser.add_argument("--host", type=str, default="0.0.0.0", help="Server bind host")
+    server_parser.add_argument("--port", type=int, default=8080, help="Server bind port")
+    server_parser.add_argument("--num-rounds", type=int, default=50, help="Number of FL rounds")
+
+    # Client subcommand
+    client_parser = subparsers.add_parser("client", help="Run a Flower Client")
+    client_parser.add_argument("--server-address", type=str, required=True, help="Server address (IP:PORT)")
+    client_parser.add_argument("--partition-id", type=int, required=True, help="Data partition ID")
+
+    args = parser.parse_args()
+
+    # Load default Hydra configuration
+    # This assumes your 'conf' directory is at the root of the repo (parent of src)
+    with hydra.initialize(version_base=None, config_path="../conf"):
+        cfg = hydra.compose(config_name="config")
+
+    if args.mode == "server":
+        # Override config with CLI arguments
+        # FIX: Unlock the config dict so we can add 'server' keys if they are missing
+        with open_dict(cfg):
+            if "hardware" not in cfg:
+                cfg.hardware = {}
+            if "server" not in cfg.hardware:
+                cfg.hardware.server = {}
+            
+            cfg.hardware.server.host = args.host
+            cfg.hardware.server.port = args.port
+            
+            if "server" not in cfg:
+                cfg.server = {}
+            cfg.server.num_rounds = args.num_rounds
+        
+        run_server(cfg)
+
+    elif args.mode == "client":
+        run_client(args.server_address, args.partition_id, cfg)

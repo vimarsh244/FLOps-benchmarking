@@ -1,0 +1,70 @@
+---
+# Pre-download dataset and sync to all clients to avoid network bottlenecks
+
+- name: Download Dataset on Server
+  hosts: servers
+  become: false
+  
+  vars:
+    # Proxy required to reach Hugging Face
+    proxy_env:
+      http_proxy: "http://10.8.1.221:8888"
+      https_proxy: "http://10.8.1.221:8888"
+      HF_HUB_DISABLE_SSL_VERIFY: "1"
+      CURL_CA_BUNDLE: ""
+    python_env: ~/envs/flops/bin/python
+
+  tasks:
+    - name: Install datasets library (pinned version)
+      pip:
+        # FIX: Pin version to match clients (2.19.2) so cache format is compatible
+        name: datasets==2.19.2
+        virtualenv: "{{ python_env | dirname | dirname }}"
+        extra_args: "--proxy http://10.8.1.221:8888 --trusted-host pypi.org --trusted-host files.pythonhosted.org"
+      environment: "{{ proxy_env }}"
+
+    - name: Download CIFAR-10 to local cache
+      shell: |
+        {{ python_env }} -c "from datasets import load_dataset; load_dataset('uoft-cs/cifar10')"
+      environment: "{{ proxy_env }}"
+      register: download_result
+    
+    - name: Show download status
+      debug:
+        msg: "Dataset downloaded successfully"
+
+
+- name: Sync Cache to Clients
+  hosts: clients
+  become: false
+  
+  vars:
+    # Path to Hugging Face cache
+    local_cache_path: "~/.cache/huggingface/datasets"
+    remote_cache_path: "~/.cache/huggingface/datasets"
+
+  tasks:
+    - name: Create remote cache directory
+      file:
+        path: "~/.cache/huggingface"
+        state: directory
+        mode: '0755'
+
+    - name: Sync dataset cache from Server to Clients
+      synchronize:
+        src: "{{ local_cache_path }}"
+        dest: "~/.cache/huggingface/"
+        # archive: yes guarantees permissions/times are preserved
+        archive: yes
+        # delete: no ensures we don't wipe existing other datasets
+        delete: no
+      delegate_to: localhost
+      # We only need to sync to 'other' nodes, not the server itself
+      when: inventory_hostname != 'server' and inventory_hostname != 'vagator2'
+
+    - name: Fix Vagator1 Missing Dependencies (Repair Step)
+      pip:
+        name: "hydra-core flwr[simulation] torch torchvision"
+        virtualenv: "~/envs/flops"
+        extra_args: "--proxy http://10.8.1.221:8888 --trusted-host pypi.org --trusted-host files.pythonhosted.org"
+      when: inventory_hostname == 'vagator1'
