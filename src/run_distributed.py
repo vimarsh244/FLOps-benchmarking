@@ -419,16 +419,7 @@ if __name__ == "__main__":
             # handle wandb configuration from CLI
             if "logging" not in cfg:
                 cfg.logging = {}
-            
-            if args.wandb:
-                cfg.logging.backend = "wandb"
-                if "wandb" not in cfg.logging:
-                    cfg.logging.wandb = {}
-                if args.wandb_project:
-                    cfg.logging.wandb.project = args.wandb_project
-                if args.wandb_name:
-                    cfg.logging.wandb.run_name = args.wandb_name
-        
+                    
         run_server(cfg)
 
     elif args.mode == "client":
