@@ -13,6 +13,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 
 from src.utils.logging import get_logger, setup_logging
+from src.utils.wandb_logger import init_wandb_logger, finish_wandb
 
 
 @dataclass
@@ -211,6 +212,67 @@ def run_with_ssh(
     logger.info("Distributed experiment completed")
 
 
+def _init_wandb_for_server(cfg: DictConfig):
+    """Initialize wandb for the distributed server.
+    
+    In distributed mode, wandb runs only on the server and collects
+    all aggregated metrics from clients. The strategies already call
+    log_round_metrics() during aggregation, so we just need to
+    initialize wandb here.
+    
+    Args:
+        cfg: Hydra configuration
+        
+    Returns:
+        wandb run instance or None if initialization fails
+    """
+    logger = get_logger()
+    
+    try:
+        import wandb
+        from omegaconf import OmegaConf
+        
+        wandb_cfg = cfg.logging.get("wandb", {})
+        
+        # convert omegaconf to dict for wandb
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
+        
+        project = wandb_cfg.get("project", "flops-benchmarking")
+        run_name = wandb_cfg.get("run_name") or f"{cfg.experiment.name}-distributed"
+        mode = wandb_cfg.get("mode", "online")
+        
+        logger.info(f"Initializing W&B on server: project={project}, name={run_name}, mode={mode}")
+        
+        run = wandb.init(
+            project=project,
+            entity=wandb_cfg.get("entity"),
+            name=run_name,
+            tags=list(wandb_cfg.get("tags", [])) + ["distributed"],
+            notes=wandb_cfg.get("notes"),
+            mode=mode,
+            config=config_dict,
+        )
+        
+        if run:
+            logger.info(f"W&B run initialized: {run.name} (id: {run.id})")
+            logger.info(f"W&B run URL: {run.get_url()}")
+            # initialize global wandb logger for strategies to use
+            init_wandb_logger(run)
+        else:
+            logger.warning("W&B run returned None")
+        
+        return run
+        
+    except ImportError:
+        logger.warning("wandb not installed, skipping W&B logging. Install with: pip install wandb")
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to initialize W&B: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        return None
+
+
 def run_server(cfg: DictConfig) -> None:
     """Run the Flower server for distributed mode.
     
@@ -224,6 +286,12 @@ def run_server(cfg: DictConfig) -> None:
     
     logger = get_logger()
     
+    # initialize wandb on server if enabled
+    # this collects all client metrics since strategies call log_round_metrics()
+    wandb_run = None
+    if cfg.logging.get("backend") == "wandb":
+        wandb_run = _init_wandb_for_server(cfg)
+    
     # create model for initial parameters
     model = get_model_from_config(cfg.model, cfg.dataset)
     initial_parameters = get_initial_parameters(model)
@@ -232,7 +300,7 @@ def run_server(cfg: DictConfig) -> None:
     strategy = create_strategy(cfg, initial_parameters=initial_parameters)
     
     # server config
-    # Use config values, potentially overridden by CLI args
+    # use config values, potentially overridden by CLI args
     server_cfg = cfg.hardware.get("server", {})
     host = server_cfg.get("host", "0.0.0.0")
     port = server_cfg.get("port", 8080)
@@ -240,12 +308,19 @@ def run_server(cfg: DictConfig) -> None:
     
     logger.info(f"Starting Flower server on {host}:{port} for {num_rounds} rounds")
     
-    # start server
-    fl.server.start_server(
-        server_address=f"{host}:{port}",
-        config=fl.server.ServerConfig(num_rounds=num_rounds),
-        strategy=strategy,
-    )
+    try:
+        # start server
+        fl.server.start_server(
+            server_address=f"{host}:{port}",
+            config=fl.server.ServerConfig(num_rounds=num_rounds),
+            strategy=strategy,
+        )
+    finally:
+        # ensure wandb is properly finished even if server crashes
+        if wandb_run is not None:
+            logger.info("Finishing wandb run...")
+            finish_wandb()
+            logger.info("Wandb run finished")
 
 
 def run_client(
@@ -314,6 +389,9 @@ if __name__ == "__main__":
     server_parser.add_argument("--host", type=str, default="0.0.0.0", help="Server bind host")
     server_parser.add_argument("--port", type=int, default=8080, help="Server bind port")
     server_parser.add_argument("--num-rounds", type=int, default=50, help="Number of FL rounds")
+    server_parser.add_argument("--wandb", action="store_true", help="Enable wandb logging on server")
+    server_parser.add_argument("--wandb-project", type=str, default=None, help="Wandb project name")
+    server_parser.add_argument("--wandb-name", type=str, default=None, help="Wandb run name")
 
     # Client subcommand
     client_parser = subparsers.add_parser("client", help="Run a Flower Client")
@@ -342,6 +420,19 @@ if __name__ == "__main__":
             if "server" not in cfg:
                 cfg.server = {}
             cfg.server.num_rounds = args.num_rounds
+            
+            # handle wandb configuration from CLI
+            if "logging" not in cfg:
+                cfg.logging = {}
+            
+            if args.wandb:
+                cfg.logging.backend = "wandb"
+                if "wandb" not in cfg.logging:
+                    cfg.logging.wandb = {}
+                if args.wandb_project:
+                    cfg.logging.wandb.project = args.wandb_project
+                if args.wandb_name:
+                    cfg.logging.wandb.run_name = args.wandb_name
         
         run_server(cfg)
 
