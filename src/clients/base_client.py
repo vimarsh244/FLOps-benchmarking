@@ -236,13 +236,14 @@ class FlowerClient(NumPyClient):
                 outputs = self.model(images)
                 loss = criterion(outputs, labels)
                 
-                # add proximal term for FedProx
+                # add proximal term for FedProx: (mu/2) * ||w - w_global||^2
                 if proximal_mu > 0 and self._global_params is not None:
                     proximal_term = 0.0
                     for local_param, global_param in zip(
                         self.model.parameters(), self._global_params
                     ):
-                        proximal_term += (local_param - global_param.to(self.device)).norm(2)
+                        # use squared L2 norm as per paper
+                        proximal_term += (local_param - global_param.to(self.device)).norm(2).pow(2)
                     loss = loss + (proximal_mu / 2) * proximal_term
                 
                 loss.backward()

@@ -286,10 +286,10 @@ class SCAFFOLD(Strategy):
 
         params = ndarrays_to_parameters(self._global_model)
 
-        # aggregate metrics
+        # aggregate metrics (use valid_results, not all results)
         metrics_aggregated: Dict[str, Scalar] = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
         # log fit metrics to wandb

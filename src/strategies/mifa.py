@@ -49,22 +49,29 @@ connected to the server.
 class CustomMIFA(Strategy):
     """MIFA strategy for handling device unavailability.
 
+    Paper: Fast Federated Learning in the Presence of Arbitrary Device Unavailability
+           https://arxiv.org/abs/2106.04159
+
     Maintains a cached per-client update table U_i. On each round t, for each
     successful client i we set:
 
-        U_i <- (w_i^t - w^t) / eta_t
+        U_i <- (w_i^t - w^t) / (K * eta_local)
+
+    where K is the number of local steps and eta_local is the client learning rate.
+    This normalizes updates to be comparable across clients.
 
     Then the global is updated using the average cached update across ALL clients:
 
-        w^{t+1} = w^t + eta_t * (1/N) * sum_i U_i
-
-    The server step-size follows an inverse-proportional decay schedule:
-        eta_t = base_server_lr / (true_round + 1)
+        w^{t+1} = w^t + eta_server * (1/N) * sum_i U_i
 
     Parameters
     ----------
     base_server_lr : float
-        Base server learning rate (decays as 1/t).
+        Base server learning rate for aggregation.
+    client_lr : float
+        Client-side learning rate (used for update normalization).
+    local_steps : int
+        Number of local SGD steps per client (used for normalization).
     wait_for_all_clients_init : bool
         If True, wait for all clients to participate before starting
         the MIFA update rule.
@@ -90,7 +97,9 @@ class CustomMIFA(Strategy):
         initial_parameters: Optional[Parameters] = None,
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        base_server_lr: float = 0.1,
+        base_server_lr: float = 1.0,
+        client_lr: float = 0.01,
+        local_steps: int = 1,
         wait_for_all_clients_init: bool = True,
     ) -> None:
         super().__init__()
@@ -115,7 +124,9 @@ class CustomMIFA(Strategy):
         self.evaluate_metrics_aggregation_fn = evaluate_metrics_aggregation_fn or weighted_average
 
         # mifa state
-        self._base_lr = float(base_server_lr)
+        self._server_lr = float(base_server_lr)
+        self._client_lr = float(client_lr)
+        self._local_steps = int(local_steps)
         self._true_round = 0  # counts only updates after table init
         self._table_initialized = False
         self._wait_for_all = wait_for_all_clients_init
@@ -124,7 +135,7 @@ class CustomMIFA(Strategy):
         self._latest_global: Optional[NDArrays] = None
 
     def __repr__(self) -> str:
-        return f"CustomMIFA(accept_failures={self.accept_failures}, base_server_lr={self._base_lr})"
+        return f"CustomMIFA(server_lr={self._server_lr}, client_lr={self._client_lr})"
 
     def num_fit_clients(self, num_available_clients: int) -> Tuple[int, int]:
         num_clients = int(num_available_clients * self.fraction_fit)
@@ -144,9 +155,9 @@ class CustomMIFA(Strategy):
             self._latest_global = parameters_to_ndarrays(initial_parameters)
         return initial_parameters
 
-    def _current_eta(self) -> float:
-        """Current learning rate with inverse decay."""
-        return self._base_lr / float(self._true_round + 1)
+    def _normalization_factor(self) -> float:
+        """Get the normalization factor for client updates: K * eta_local."""
+        return float(self._local_steps) * self._client_lr
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -244,15 +255,16 @@ class CustomMIFA(Strategy):
         self._ensure_table_entries()
 
         # compute normalized updates (only for valid results)
-        eta_t = self._current_eta()
+        # normalize by K * eta_local so updates are comparable across clients
+        norm_factor = self._normalization_factor()
         old_global = copy_weights(self._latest_global)
 
         for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             w_i = parameters_to_ndarrays(fit_res.parameters)
-            # delta = (w_i - w_t) / eta_t
+            # U_i = (w_i - w_t) / (K * eta_local)
             upd = [
-                (np.asarray(w_i[k], dtype=np.float32) - np.asarray(old_global[k], dtype=np.float32)) / np.float32(eta_t)
+                (np.asarray(w_i[k], dtype=np.float32) - np.asarray(old_global[k], dtype=np.float32)) / np.float32(norm_factor)
                 for k in range(len(w_i))
             ]
             self._update_table[cid] = upd
@@ -274,16 +286,16 @@ class CustomMIFA(Strategy):
                 return params, metrics_aggregated
             self._table_initialized = True
 
-        # compute mean of cached updates
+        # compute mean of cached updates across ALL clients (including stale ones)
         self._ensure_table_entries()
         N = max(1, len(self._all_client_ids))
         mean_upd = zeros_like(self._latest_global)
         for cid in self._all_client_ids:
             add_inplace(mean_upd, self._update_table[cid], alpha=1.0 / float(N))
 
-        # apply server update: w_{t+1} = w_t + eta_t * mean(U)
+        # apply server update: w_{t+1} = w_t + eta_server * mean(U)
         new_global = copy_weights(old_global)
-        add_inplace(new_global, mean_upd, alpha=eta_t)
+        add_inplace(new_global, mean_upd, alpha=self._server_lr)
         self._latest_global = new_global
         self._true_round += 1
 

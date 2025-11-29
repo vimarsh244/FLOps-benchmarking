@@ -50,7 +50,7 @@ def run_simulation(cfg: DictConfig) -> None:
     from flwr.client import ClientApp
     from flwr.server import ServerApp
     
-    from src.clients.base_client import create_client_fn
+    from src.clients.registry import create_client_fn
     from src.server.server_app import create_server_fn
     
     logger = get_logger()

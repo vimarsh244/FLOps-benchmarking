@@ -259,13 +259,22 @@ def run_client(
         cfg: Hydra configuration
     """
     import flwr as fl
-    from src.clients.base_client import FlowerClient
+    from src.clients.registry import get_client_class, get_client_type_for_strategy
     from src.models.registry import get_model_from_config
     from src.datasets.loader import load_data
     from src.scenarios.registry import get_scenario
     
     logger = get_logger()
     logger.info(f"Starting client {partition_id}, connecting to {server_address}")
+    
+    # determine client type based on strategy
+    client_type = cfg.client.get("client_type", None)
+    if client_type is None:
+        strategy_name = cfg.strategy.get("name", "fedavg")
+        client_type = get_client_type_for_strategy(strategy_name)
+    
+    ClientClass = get_client_class(client_type)
+    logger.info(f"Using client type: {client_type} ({ClientClass.__name__})")
     
     # create model
     model = get_model_from_config(cfg.model, cfg.dataset)
@@ -283,8 +292,8 @@ def run_client(
     # create scenario handler
     scenario = get_scenario(cfg.scenario)
     
-    # create client
-    client = FlowerClient(
+    # create client using the selected class
+    client = ClientClass(
         model=model,
         trainloader=trainloader,
         valloader=valloader,

@@ -242,11 +242,12 @@ class FedOptBase(Strategy):
         # update second moment (strategy-specific)
         self._update_second_moment(delta)
 
-        # update global model: x = x + eta * m / (sqrt(v) + tau)
+        # update global model: x = x - eta * m / (sqrt(v) + tau)
+        # subtract because delta = old_model - aggregated (points away from target)
         for i in range(len(self._global_model)):
             self._global_model[i] = (
                 self._global_model[i]
-                + self.server_lr * self._m[i] / (np.sqrt(self._v[i]) + self.tau)
+                - self.server_lr * self._m[i] / (np.sqrt(self._v[i]) + self.tau)
             )
 
         params = ndarrays_to_parameters(self._global_model)

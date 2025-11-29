@@ -228,10 +228,10 @@ class CustomFedAvg(Strategy):
 
         parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
 
-        # aggregate custom metrics
+        # aggregate custom metrics (use valid_results, not all results)
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
         # log fit metrics to wandb
