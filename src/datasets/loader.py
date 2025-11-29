@@ -200,6 +200,7 @@ def load_data(
         shuffle=True,
         collate_fn=collate_fn,
         num_workers=0,  # avoid issues with multiprocessing in FL
+        drop_last=True, # becasue resnet has batchnorm and if for one client last batch is not divisible by batch size, it will cause issues - so we drop it
     )
     
     test_loader = DataLoader(

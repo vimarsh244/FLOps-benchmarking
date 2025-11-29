@@ -144,11 +144,11 @@ def create_strategy(
         )
     
     elif strategy_name == "clusteredfl":
-        strategy_params["eps1_mean_update_norm"] = config.strategy.get(
-            "eps1_mean_update_norm", 0.05
+        strategy_params["cosine_similarity_threshold"] = config.strategy.get(
+            "cosine_similarity_threshold", 0.7
         )
-        strategy_params["eps2_max_update_norm"] = config.strategy.get(
-            "eps2_max_update_norm", 0.2
+        strategy_params["min_cosine_similarity"] = config.strategy.get(
+            "min_cosine_similarity", 0.3
         )
         strategy_params["split_warmup_rounds"] = config.strategy.get(
             "split_warmup_rounds", 5

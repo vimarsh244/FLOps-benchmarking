@@ -1,0 +1,7 @@
+# SimpleCNNLarge Model Configuration
+name: simplecnn_large
+_target_: src.models.simple_cnn.SimpleCNNLarge
+
+# model architecture parameters
+# larger CNN with more capacity, suited for Tiny-ImageNet or complex tasks
+
