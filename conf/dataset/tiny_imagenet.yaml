@@ -6,6 +6,10 @@ _target_: src.datasets.loader.load_data
 dataset_name: zh-plus/tiny-imagenet
 num_classes: 200
 
+# keys used in the huggingface dataset
+image_key: image
+label_key: label
+
 # image properties
 image_size: 64
 channels: 3

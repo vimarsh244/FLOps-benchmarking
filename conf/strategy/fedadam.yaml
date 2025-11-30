@@ -1,10 +1,11 @@
-# FedAdam Strategy Configuration (FedOpt variant)
+# FedAdam Strategy Configuration
+# Uses Flower's built-in FedAdam: https://flower.ai/docs/framework/ref-api/flwr.server.strategy.FedAdam.html
 name: fedadam
-_target_: src.strategies.fedopt.FedAdam
+_target_: flwr.server.strategy.FedAdam
 
-# FedAdam specific parameters
-server_lr: 0.01     # server-side learning rate (eta)
+# FedAdam hyperparameters (Flower's defaults)
+eta: 0.1            # server-side learning rate
 beta_1: 0.9         # first moment decay
 beta_2: 0.99        # second moment decay
-tau: 1e-3           # adaptivity parameter
+tau: 1e-9           # adaptivity parameter
 

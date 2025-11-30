@@ -3,6 +3,10 @@
 Paper: SCAFFOLD: Stochastic Controlled Averaging for Federated Learning
        Karimireddy et al., 2020
        https://arxiv.org/abs/1910.06378
+
+Important: Control variates are maintained ONLY for trainable parameters,
+not for buffers (like BatchNorm running_mean/running_var). This ensures
+proper alignment between server and client control variate application.
 """
 
 import time
@@ -26,10 +30,11 @@ class ScaffoldClient(NumPyClient):
     The SCAFFOLD algorithm corrects for client drift by maintaining control
     variates that adjust the gradient updates. This client implements:
     
-    1. Unpacks [model, server_control, client_control] from server
+    1. Unpacks [full_model, server_control, client_control] from server
+       where control variates are for trainable params only
     2. Trains with correction: grad - c_i + c (variance reduction)
     3. Computes new control variate after training
-    4. Returns [new_model, new_c_i, delta_c] to server
+    4. Returns [full_model, new_c_i, delta_c] to server
     """
 
     def __init__(
@@ -67,8 +72,9 @@ class ScaffoldClient(NumPyClient):
         self.learning_rate = config.client.get("learning_rate", 0.01)
         self.batch_size = config.client.get("batch_size", 32)
         
-        # scaffold state - will be set from server parameters
-        self._num_model_params: Optional[int] = None
+        # cache counts
+        self._num_trainable = len(list(self.model.parameters()))
+        self._num_full_state = len(list(self.model.state_dict().keys()))
 
     def _get_device(self) -> torch.device:
         """Get the device to use for training."""
@@ -84,12 +90,8 @@ class ScaffoldClient(NumPyClient):
         else:
             return torch.device(device_cfg)
 
-    def _get_num_model_params(self) -> int:
-        """Get the number of parameter arrays in the model."""
-        return len(list(self.model.state_dict().keys()))
-
     def set_parameters(self, parameters: NDArrays) -> None:
-        """Set model weights from numpy arrays."""
+        """Set model weights from numpy arrays (full state_dict)."""
         params_dict = zip(self.model.state_dict().keys(), parameters)
         state_dict = OrderedDict(
             {
@@ -100,8 +102,12 @@ class ScaffoldClient(NumPyClient):
         self.model.load_state_dict(state_dict, strict=True)
 
     def get_parameters(self, config: Dict[str, Scalar]) -> NDArrays:
-        """Get model weights as numpy arrays."""
+        """Get model weights as numpy arrays (full state_dict)."""
         return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
+
+    def get_trainable_parameters(self) -> NDArrays:
+        """Get only trainable parameters as numpy arrays."""
+        return [p.detach().cpu().numpy() for p in self.model.parameters()]
 
     def _should_participate(self, current_round: int) -> bool:
         """Check if client should participate in this round."""
@@ -128,35 +134,50 @@ class ScaffoldClient(NumPyClient):
                 time.sleep(min(actual_delay, 10.0))
 
     def _unpack_scaffold_params(
-        self, parameters: NDArrays
+        self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[NDArrays, NDArrays, NDArrays]:
         """Unpack SCAFFOLD parameters from server.
         
-        Server sends: [model_params..., server_control..., client_control...]
+        Server sends: 
+        - First round: [full_model...] only (num_trainable=0)
+        - Later rounds: [full_model..., server_control..., client_control...]
+        where control variates are for trainable params only.
         
         Returns:
-            Tuple of (model_params, server_control, client_control)
+            Tuple of (full_model_params, server_control, client_control)
         """
-        num_params = self._get_num_model_params()
-        self._num_model_params = num_params
+        # get counts from config or compute from model
+        num_full_state = int(config.get("num_full_state", self._num_full_state))
+        num_trainable = int(config.get("num_trainable", self._num_trainable))
+        is_first_round = int(config.get("first_round", 0)) == 1
         
-        model_params = parameters[:num_params]
-        server_control = parameters[num_params:2*num_params]
-        client_control = parameters[2*num_params:3*num_params]
+        full_model = parameters[:num_full_state]
         
-        return model_params, server_control, client_control
+        if is_first_round or num_trainable == 0:
+            # first round: no control variates sent, initialize to zeros
+            # use actual number of trainable params from model
+            server_control = [np.zeros_like(p.detach().cpu().numpy(), dtype=np.float32) 
+                            for p in self.model.parameters()]
+            client_control = [np.zeros_like(p.detach().cpu().numpy(), dtype=np.float32) 
+                            for p in self.model.parameters()]
+        else:
+            # later rounds: unpack control variates from parameters
+            server_control = parameters[num_full_state:num_full_state + num_trainable]
+            client_control = parameters[num_full_state + num_trainable:num_full_state + 2*num_trainable]
+        
+        return full_model, server_control, client_control
 
     def _pack_scaffold_results(
         self,
-        new_model: NDArrays,
+        full_model: NDArrays,
         new_client_control: NDArrays,
         delta_control: NDArrays,
     ) -> NDArrays:
         """Pack SCAFFOLD results to send to server.
         
-        Returns: [new_model..., new_client_control..., delta_control...]
+        Returns: [full_model..., new_client_control..., delta_control...]
         """
-        return list(new_model) + list(new_client_control) + list(delta_control)
+        return list(full_model) + list(new_client_control) + list(delta_control)
 
     def fit(
         self, parameters: NDArrays, config: Dict[str, Scalar]
@@ -164,7 +185,7 @@ class ScaffoldClient(NumPyClient):
         """Train with SCAFFOLD control variate correction.
         
         Args:
-            parameters: Packed [model, server_control, client_control] from server
+            parameters: Packed [full_model, server_control, client_control] from server
             config: Configuration including client_lr and current_round
         
         Returns:
@@ -180,12 +201,13 @@ class ScaffoldClient(NumPyClient):
         start_time = time.time()
         
         # unpack scaffold parameters
-        model_params, server_control, client_control = self._unpack_scaffold_params(parameters)
+        full_model, server_control, client_control = self._unpack_scaffold_params(parameters, config)
         
-        # set model parameters
-        self.set_parameters(model_params)
+        # set full model parameters
+        self.set_parameters(full_model)
         
         # convert control variates to torch tensors
+        # these are for TRAINABLE params only, matching model.parameters() order
         server_control_tensors = [
             torch.tensor(c, dtype=torch.float32, device=self.device) 
             for c in server_control
@@ -195,8 +217,8 @@ class ScaffoldClient(NumPyClient):
             for c in client_control
         ]
         
-        # cache initial model for control variate computation
-        initial_model = [p.clone().detach() for p in self.model.parameters()]
+        # cache initial trainable params for control variate computation
+        initial_trainable = [p.clone().detach() for p in self.model.parameters()]
         
         # apply straggler delay
         self._apply_straggler_delay(current_round)
@@ -214,15 +236,15 @@ class ScaffoldClient(NumPyClient):
         
         # compute new client control variate using option 2 from paper:
         # c_i^+ = c_i - c + (1/(K*eta)) * (x - y)
-        # where x is initial model, y is trained model, K is total steps
-        new_model_params = self.get_parameters({})
+        # where x is initial trainable params, y is trained trainable params
+        new_model_full = self.get_parameters({})
         
-        # compute (x - y) / (K * eta)
+        # compute new control variates for trainable params only
         new_client_control = []
         delta_control = []
         
         for i, (init_p, new_p, c_i, c) in enumerate(zip(
-            initial_model, 
+            initial_trainable, 
             self.model.parameters(),
             client_control_tensors,
             server_control_tensors
@@ -242,15 +264,20 @@ class ScaffoldClient(NumPyClient):
         runtime = end_time - start_time
         print(f"[ScaffoldClient {self.partition_id}] Training took {runtime:.2f}s")
         
-        # pack results
+        # pack results: [full_model, new_c_i (trainable), delta_c (trainable)]
         packed_results = self._pack_scaffold_results(
-            new_model_params, new_client_control, delta_control
+            new_model_full, new_client_control, delta_control
         )
         
         return (
             packed_results,
             len(self.trainloader.dataset),
-            {"train_loss": train_loss, "runtime": runtime},
+            {
+                "train_loss": train_loss, 
+                "runtime": runtime,
+                "num_trainable": self._num_trainable,
+                "num_full_state": self._num_full_state,
+            },
         )
 
     def evaluate(
@@ -263,7 +290,7 @@ class ScaffoldClient(NumPyClient):
         """
         start_time = time.time()
         
-        # for evaluation, parameters are just model params (not packed)
+        # for evaluation, parameters are just full model params (not packed)
         self.set_parameters(parameters)
         
         loss, accuracy = self._test()
@@ -285,11 +312,14 @@ class ScaffoldClient(NumPyClient):
         The gradient correction is: grad - c_i + c
         where c_i is client control, c is server control.
         
+        Control variates are applied to TRAINABLE parameters only,
+        in the same order as model.parameters().
+        
         Args:
             epochs: Number of local epochs
             client_lr: Learning rate for local training
-            server_control: Server control variate tensors
-            client_control: Client control variate tensors
+            server_control: Server control variate tensors (trainable params only)
+            client_control: Client control variate tensors (trainable params only)
         
         Returns:
             Tuple of (average_loss, total_steps)
@@ -318,6 +348,7 @@ class ScaffoldClient(NumPyClient):
                 loss.backward()
                 
                 # apply scaffold correction to gradients: grad - c_i + c
+                # iterate over trainable params and their corresponding controls
                 with torch.no_grad():
                     for param, c_i, c in zip(
                         self.model.parameters(),
@@ -365,4 +396,3 @@ class ScaffoldClient(NumPyClient):
         avg_loss = total_loss / max(num_samples, 1)
         
         return avg_loss, accuracy
-

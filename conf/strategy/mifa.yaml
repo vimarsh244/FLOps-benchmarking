@@ -3,8 +3,6 @@ name: mifa
 _target_: src.strategies.mifa.CustomMIFA
 
 # MIFA specific parameters
-base_server_lr: 1.0     # server learning rate for aggregation
-client_lr: 0.01         # client learning rate (for update normalization)
-local_steps: 1          # number of local SGD steps per client
+base_server_lr: 0.5     # server learning rate for aggregation (0.5 works well for most cases)
 wait_for_all_clients_init: true  # wait for all clients before starting updates
 

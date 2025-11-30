@@ -100,6 +100,8 @@ class CustomMIFA(Strategy):
         base_server_lr: float = 1.0,
         client_lr: float = 0.01,
         local_steps: int = 1,
+        local_epochs: int = 1,
+        batch_size: int = 32,
         wait_for_all_clients_init: bool = True,
     ) -> None:
         super().__init__()
@@ -127,6 +129,8 @@ class CustomMIFA(Strategy):
         self._server_lr = float(base_server_lr)
         self._client_lr = float(client_lr)
         self._local_steps = int(local_steps)
+        self._local_epochs = int(local_epochs)
+        self._batch_size = int(batch_size)
         self._true_round = 0  # counts only updates after table init
         self._table_initialized = False
         self._wait_for_all = wait_for_all_clients_init
@@ -155,9 +159,28 @@ class CustomMIFA(Strategy):
             self._latest_global = parameters_to_ndarrays(initial_parameters)
         return initial_parameters
 
-    def _normalization_factor(self) -> float:
-        """Get the normalization factor for client updates: K * eta_local."""
-        return float(self._local_steps) * self._client_lr
+    def _normalization_factor(self, num_samples: int = 0) -> float:
+        """Get the normalization factor for client updates: K * eta_local.
+        
+        Args:
+            num_samples: Number of samples the client trained on.
+                        Used to estimate actual gradient steps.
+        
+        The number of gradient steps K = local_epochs * ceil(num_samples / batch_size).
+        If local_steps is explicitly set > 1, use that instead.
+        """
+        if self._local_steps > 1:
+            # use configured local_steps if explicitly set
+            actual_steps = self._local_steps
+        elif num_samples > 0 and self._batch_size > 0:
+            # estimate from training config
+            batches_per_epoch = max(1, (num_samples + self._batch_size - 1) // self._batch_size)
+            actual_steps = self._local_epochs * batches_per_epoch
+        else:
+            # fallback to 1 epoch worth of steps
+            actual_steps = max(1, self._local_steps)
+        
+        return float(actual_steps) * self._client_lr
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -256,12 +279,16 @@ class CustomMIFA(Strategy):
 
         # compute normalized updates (only for valid results)
         # normalize by K * eta_local so updates are comparable across clients
-        norm_factor = self._normalization_factor()
         old_global = copy_weights(self._latest_global)
 
         for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             w_i = parameters_to_ndarrays(fit_res.parameters)
+            
+            # compute normalization factor based on this client's training
+            num_samples = fit_res.num_examples
+            norm_factor = self._normalization_factor(num_samples)
+            
             # U_i = (w_i - w_t) / (K * eta_local)
             upd = [
                 (np.asarray(w_i[k], dtype=np.float32) - np.asarray(old_global[k], dtype=np.float32)) / np.float32(norm_factor)
