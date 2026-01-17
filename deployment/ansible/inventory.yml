@@ -8,15 +8,17 @@ all:
     python_env: ~/envs/flops/bin/python
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
     flops_repo_path: ~/flops-benchmarking
-    server_address: "10.8.1.221:8080"
+    # Updated server address to match the new IP of vagator2 (acting as server)
+    server_address: "10.1.19.113:8080"
 
   children:
     # server group (usually the controller or aggregator)
+    # Mapping server to vagator2's new IP based on previous configuration logic
     servers:
       hosts:
         server:
-          ansible_host: 10.8.1.221
-          ansible_user: nvidia
+          ansible_host: 10.1.19.113
+          ansible_user: vagator2
           ansible_password: nvidia
           ansible_become_password: nvidia
 
@@ -24,15 +26,17 @@ all:
     vagators:
       hosts:
         vagator1:
-          ansible_host: 10.8.1.220
+          ansible_host: 10.1.19.112
+          ansible_user: vagator1
           partition_id: 0
           device_type: jetson_orin_nx
         vagator2:
-          ansible_host: 10.8.1.221
+          ansible_host: 10.1.19.113
+          ansible_user: vagator2
           partition_id: 1
           device_type: jetson_orin_nx
       vars:
-        ansible_user: nvidia
+        # User is now defined per-host above
         ansible_password: nvidia
         ansible_become_password: nvidia
         ansible_python_interpreter: /usr/bin/python3
@@ -41,92 +45,92 @@ all:
     cortalims:
       hosts:
         cortalim1:
-          ansible_host: 10.8.1.200
+          ansible_host: 10.1.19.114
           ansible_user: cortalim1
           partition_id: 2
           device_type: raspberry_pi_5
         cortalim2:
-          ansible_host: 10.8.1.46
+          ansible_host: 10.1.19.115
           ansible_user: cortalim2
           partition_id: 3
           device_type: raspberry_pi_5
         cortalim3:
-          ansible_host: 10.8.1.189
+          ansible_host: 10.1.19.116
           ansible_user: cortalim3
           partition_id: 4
           device_type: raspberry_pi_4b
         cortalim4:
-          ansible_host: 10.8.1.210
+          ansible_host: 10.1.19.117
           ansible_user: cortalim4
           partition_id: 5
           device_type: raspberry_pi_5
         cortalim5:
-          ansible_host: 10.8.1.185
+          ansible_host: 10.1.19.118
           ansible_user: cortalim5 
           partition_id: 6
           device_type: raspberry_pi_4b
         cortalim6:
-          ansible_host: 10.8.1.159
+          ansible_host: 10.1.19.119
           ansible_user: cortalim6
           partition_id: 7
           device_type: raspberry_pi_5
         cortalim7:
-          ansible_host: 10.8.1.152
+          ansible_host: 10.1.19.120
           ansible_user: cortalim7
           partition_id: 8
           device_type: raspberry_pi_5
         cortalim8:
-          ansible_host: 10.8.1.216
+          ansible_host: 10.1.19.121
           ansible_user: cortalim8
           partition_id: 9
           device_type: raspberry_pi_5
         cortalim9:
-          ansible_host: 10.8.1.215
+          ansible_host: 10.1.19.122
           ansible_user: cortalim9
           partition_id: 10
           device_type: raspberry_pi_5
         cortalim10:
-          ansible_host: 10.8.1.190
+          ansible_host: 10.1.19.123
           ansible_user: cortalim10
           partition_id: 11
           device_type: raspberry_pi_4b
         cortalim11:
-          ansible_host: 10.8.1.202
+          ansible_host: 10.1.19.124
           ansible_user: cortalim11
           partition_id: 12
           device_type: raspberry_pi_5
         cortalim12:
-          ansible_host: 10.8.1.197
+          ansible_host: 10.1.19.125
           ansible_user: cortalim12
           partition_id: 13
           device_type: raspberry_pi_5
         cortalim13:
-          ansible_host: 10.8.1.196
+          ansible_host: 10.1.19.126
           ansible_user: cortalim13
           partition_id: 14
           device_type: raspberry_pi_5
         cortalim14:
-          ansible_host: 10.8.1.186
+          ansible_host: 10.1.19.127
           ansible_user: cortalim14
           partition_id: 15
           device_type: raspberry_pi_5
         cortalim15:
-          ansible_host: 10.8.1.198
+          ansible_host: 10.1.19.128
           ansible_user: cortalim15
           partition_id: 16
           device_type: raspberry_pi_5
         cortalim16:
-          ansible_host: 10.8.1.184
+          ansible_host: 10.1.19.129
           ansible_user: cortalim16
           partition_id: 17
           device_type: raspberry_pi_5
         cortalim17:
-          ansible_host: 10.8.1.188
+          ansible_host: 10.1.19.130
           ansible_user: cortalim17
           partition_id: 18
           device_type: raspberry_pi_5
         cortalim18:
-          ansible_host: 10.8.1.206
+          ansible_host: 10.1.19.131
           ansible_user: cortalim18
           partition_id: 19
           device_type: raspberry_pi_4b

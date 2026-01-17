@@ -1,0 +1,61 @@
+[2025-11-28 11:08:53] INFO - flops - Starting client 14, connecting to 10.8.1.221:8080
+Using the latest cached version of the dataset since uoft-cs/cifar10 couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'plain_text' at /home/cortalim13/.cache/huggingface/datasets/uoft-cs___cifar10/plain_text/0.0.0/0b2714987fa478483af9968de7c934580d0bb9a2 (last modified on Fri Nov 28 10:53:31 2025).
+/home/cortalim13/envs/flops/lib/python3.13/site-packages/datasets/utils/_dill.py:379: DeprecationWarning: co_lnotab is deprecated, use co_lines instead.
+  obj.co_lnotab,  # for < python 3.10 [not counted in args]
+[93mWARNING [0m:   DEPRECATED FEATURE: flwr.client.start_client() is deprecated.
+	Instead, use the `flower-supernode` CLI command to start a SuperNode as shown below:
+
+		$ flower-supernode --insecure --superlink='<IP>:<PORT>'
+
+	To view all available options, run:
+
+		$ flower-supernode --help
+
+	Using `start_client()` is deprecated.
+
+            This is a deprecated feature. It will be removed
+            entirely in future versions of Flower.
+        
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message b1e7653b-2178-491e-8bb3-ef7141006dd1
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message 99baa1fe-0d92-45aa-9418-78dd6a6013ac
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 1a9d0bf5-c492-4e71-8e4c-f074a8a32888
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message f5e7b9f8-1d00-4a94-ab43-3d0344048027
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 99a8a308-7646-4aed-9b67-72aa670ee790
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message 25cf7628-4db2-4c08-ba8b-4be694e48620
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 49f3f0c1-89eb-41f5-8c35-94ada13aef8d
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message 93702ee6-9c5b-4c4f-8e6a-6017d8aac0ca
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 421886ad-d70c-4e84-8ec5-f15ddc1dcf32
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message 4c3b47b2-c742-43a9-a8c8-27697c41c6b5
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 5d6b92d7-fa14-428d-9e7a-795906a1abb0
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message c4730609-1458-49ec-a80a-23d1fff6721e
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 95e48dff-f8b6-4418-a477-3a14cc48dd03
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message a0b3816d-f65c-4a87-b95c-8372499548ec
+[92mINFO [0m:      Sent reply

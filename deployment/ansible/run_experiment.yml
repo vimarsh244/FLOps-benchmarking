@@ -13,10 +13,10 @@
     wandb_run_name: "{{ wandb_name | default('') }}"
     # Define Proxy Environment
     proxy_env:
-      http_proxy: "http://10.8.1.221:8888"
-      https_proxy: "http://10.8.1.221:8888"
+      http_proxy: "http://10.1.19.113:8888"
+      https_proxy: "http://10.1.19.113:8888"
       # CRITICAL FIX: Bypass proxy for local connections (Vagator2 IP)
-      no_proxy: "10.8.1.221,localhost,127.0.0.1,::1,api.wandb.ai,wandb.ai"
+      no_proxy: "10.1.19.113,localhost,127.0.0.1,::1,api.wandb.ai,wandb.ai"
       # Disable SSL Verify for Hugging Face downloads to bypass firewall cert issues
       HF_HUB_DISABLE_SSL_VERIFY: "1"
       CURL_CA_BUNDLE: ""
@@ -84,10 +84,10 @@
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
     # Define Proxy Environment
     proxy_env:
-      http_proxy: "http://10.8.1.221:8888"
-      https_proxy: "http://10.8.1.221:8888"
+      http_proxy: "http://10.1.19.113:8888"
+      https_proxy: "http://10.1.19.113:8888"
       # CRITICAL FIX: Bypass proxy for local connections (Vagator2 IP)
-      no_proxy: "10.8.1.221,localhost,127.0.0.1,::1"
+      no_proxy: "10.1.19.113,localhost,127.0.0.1,::1"
       # Disable SSL verify specifically for Hugging Face
       HF_HUB_DISABLE_SSL_VERIFY: "1"
       CURL_CA_BUNDLE: ""
@@ -119,7 +119,7 @@
           --server-address {{ server_address | default('localhost:8080') }} \
           --partition-id {{ partition_id }} \
           > client_{{ partition_id }}.log 2>&1
-      async: 1800  # 30 minute timeout
+      async: 28800  # 8hr timeout
       poll: 0
       register: client_job
       # Apply proxy settings to the client process
@@ -140,7 +140,7 @@
         jid: "{{ client_job.ansible_job_id }}"
       register: job_result
       until: job_result.finished
-      retries: 720  # 2 hours at 10s intervals
+      retries: 2880  # 2 hours at 10s intervals
       delay: 10
       
     - name: Display completion status

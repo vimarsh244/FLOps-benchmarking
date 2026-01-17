@@ -1,0 +1,48 @@
+[2025-11-28 05:39:03] INFO - flops - Starting client 1, connecting to 10.8.1.221:8080
+Using the latest cached version of the dataset since uoft-cs/cifar10 couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'plain_text' at /home/nvidia/.cache/huggingface/datasets/uoft-cs___cifar10/plain_text/0.0.0/0b2714987fa478483af9968de7c934580d0bb9a2 (last modified on Fri Nov 28 05:23:39 2025).
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1764308343.619703  213184 fork_posix.cc:75] Other threads are currently calling into gRPC, skipping fork() handlers
+I0000 00:00:1764308343.660732  213185 fork_posix.cc:75] Other threads are currently calling into gRPC, skipping fork() handlers
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message f88f1918-fdb3-4b71-b270-3c048bff0e21
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message dc78f767-490a-40bf-9247-0b13aaa39cbb
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 6d9accae-39fa-4cc4-b21a-2d886b6ecaf6
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message 07924cdb-f0d2-4636-b522-8261139916ea
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 49d16036-a91c-4212-ad25-8ea02537d70c
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message 25477f8e-d35e-40f3-b10e-3011ad9c10d5
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 582e3763-9776-4c2d-96e2-488042cc5887
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message a6907bac-c831-43a6-af5a-6982465c90e1
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 36c2aeaf-5658-461d-b04f-07d7113a26e2
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message 5e7f9a1d-96bf-4c8b-801e-fb73c021e511
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 6fb5b0fb-b4ff-4d14-8c65-78ce4f707b83
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message 8d47b931-e775-47bd-bc4c-35425057c35a
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: evaluate message 16e1b8e7-a4c4-4e01-bf77-46e404798143
+[92mINFO [0m:      Sent reply
+[92mINFO [0m:      
+[92mINFO [0m:      Received: train message cc91eab2-eb9f-4b42-ad12-b0045f4c0f8d
+[92mINFO [0m:      Sent reply

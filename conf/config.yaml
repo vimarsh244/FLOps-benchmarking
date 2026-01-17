@@ -6,7 +6,7 @@ defaults:
   - dataset: cifar10
   - model: resnet18
   - scenario: baseline
-  - partitioner: iid
+  - partitioner: dirichlet
   - hardware: distributed
   - logging: wandb
   - _self_
@@ -19,7 +19,7 @@ experiment:
 
 # server configuration
 server:
-  num_rounds: 2
+  num_rounds: 50
   fraction_fit: 1.0
   fraction_evaluate: 1.0
   min_fit_clients: 15

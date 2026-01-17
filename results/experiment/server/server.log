@@ -1,0 +1,54 @@
+[2025-11-28 05:38:44] INFO - flops - Starting Flower server on 10.8.1.221:8080 for 50 rounds
+[92mINFO [0m:      Starting Flower server, config: num_rounds=50, no round_timeout
+[92mINFO [0m:      Flower ECE: gRPC server running (50 rounds), SSL is disabled
+[92mINFO [0m:      [INIT]
+[92mINFO [0m:      Using initial global parameters provided by strategy
+[92mINFO [0m:      Starting evaluation of initial global parameters
+[92mINFO [0m:      Evaluation returned no results (`None`)
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 1]
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1764308324.963063  211955 fork_posix.cc:75] Other threads are currently calling into gRPC, skipping fork() handlers
+[92mINFO [0m:      configure_fit: strategy sampled 5 clients (out of 5)
+[92mINFO [0m:      aggregate_fit: received 5 results and 0 failures
+[92mINFO [0m:      configure_evaluate: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_evaluate: received 19 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 2]
+[92mINFO [0m:      configure_fit: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_fit: received 19 results and 0 failures
+[92mINFO [0m:      configure_evaluate: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_evaluate: received 19 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 3]
+[92mINFO [0m:      configure_fit: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_fit: received 19 results and 0 failures
+[92mINFO [0m:      configure_evaluate: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_evaluate: received 19 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 4]
+[92mINFO [0m:      configure_fit: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_fit: received 19 results and 0 failures
+[92mINFO [0m:      configure_evaluate: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_evaluate: received 19 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 5]
+[92mINFO [0m:      configure_fit: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_fit: received 19 results and 0 failures
+[92mINFO [0m:      configure_evaluate: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_evaluate: received 19 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 6]
+[92mINFO [0m:      configure_fit: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_fit: received 19 results and 0 failures
+[92mINFO [0m:      configure_evaluate: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_evaluate: received 19 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 7]
+[92mINFO [0m:      configure_fit: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_fit: received 19 results and 0 failures
+[92mINFO [0m:      configure_evaluate: strategy sampled 19 clients (out of 19)
+[92mINFO [0m:      aggregate_evaluate: received 19 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 8]
+[92mINFO [0m:      configure_fit: strategy sampled 19 clients (out of 19)
