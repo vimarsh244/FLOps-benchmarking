@@ -35,7 +35,7 @@ DATASETS = {
     },
 }
 
-STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl"]
+STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "diws"]
 
 DISTRIBUTIONS = {
     "iid": {"partitioner": "iid", "alpha": None},
@@ -82,6 +82,7 @@ strategy:
   cosine_similarity_threshold: 0.7
   split_warmup_rounds: 5
 """,
+    "diws": "",
 }
 
 

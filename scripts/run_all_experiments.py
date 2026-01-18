@@ -34,7 +34,7 @@ CONDA_ENV = "flops"
 # experiment order (for organizing runs)
 DATASETS = ["cifar10", "cifar100", "tinyimagenet"]
 SCENARIOS = ["baseline", "node_drop"]
-STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl"]
+STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "diws"]
 MODELS = ["simplecnn", "simplecnn_large", "resnet18"]
 DISTRIBUTIONS = ["iid", "niid_medium", "niid_high"]
 

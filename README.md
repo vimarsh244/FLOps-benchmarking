@@ -154,6 +154,13 @@ Uses control variates to reduce client drift.
 python -m src.main strategy=scaffold strategy.server_lr=1.0
 ```
 
+### DIWS
+Substitutes dropped client updates based on label distribution.
+
+```bash
+python -m src.main strategy=diws
+```
+
 ### FedOpt (FedAdam, FedYogi)
 Adaptive server-side optimization.
 

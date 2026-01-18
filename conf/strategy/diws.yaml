@@ -1,0 +1,7 @@
+# DIWS Strategy Configuration
+name: diws
+_target_: src.strategies.diws.DIWS
+
+# diws specific parameters
+substitution_timeout: 600.0
+inplace: true  # used for the internal fedavg aggregator
