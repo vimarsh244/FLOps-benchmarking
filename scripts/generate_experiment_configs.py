@@ -35,7 +35,7 @@ DATASETS = {
     },
 }
 
-STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "diws"]
+STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "diws", "fdms"]
 
 DISTRIBUTIONS = {
     "iid": {"partitioner": "iid", "alpha": None},
@@ -46,6 +46,7 @@ DISTRIBUTIONS = {
 SCENARIOS = {
     "baseline": {"scenario_override": "baseline", "enabled": False},
     "node_drop": {"scenario_override": None, "enabled": True},  # will be set per dataset
+    "node_drop_standard": {"scenario_override": "node_drop_standard", "enabled": True},
 }
 
 # strategy-specific config sections
@@ -83,7 +84,17 @@ strategy:
   split_warmup_rounds: 5
 """,
     "diws": "",
+    "fdms": "",
 }
+
+
+def get_scenario_override(scenario: str, dataset_config: dict) -> str:
+    """resolve the scenario override for a dataset."""
+    if scenario == "node_drop":
+        return dataset_config["node_drop_scenario"]
+    if scenario == "node_drop_standard":
+        return "node_drop_standard"
+    return "baseline"
 
 
 def generate_config(
@@ -92,6 +103,7 @@ def generate_config(
     model: str,
     distribution: str,
     scenario: str,
+    scenario_override: str,
     dataset_config: dict,
     dist_config: dict,
 ) -> str:
@@ -105,15 +117,9 @@ def generate_config(
     # determine partitioner
     partitioner = dist_config["partitioner"]
     
-    # determine scenario
-    if scenario == "node_drop":
-        scenario_override = dataset_config["node_drop_scenario"]
-    else:
-        scenario_override = "baseline"
-    
     # wandb run name
     dist_suffix = distribution
-    scenario_suffix = scenario
+    scenario_suffix = scenario_override
     run_name = f"{dataset}_{strategy}_{model}_{dist_suffix}_{scenario_suffix}"
     
     # build config
@@ -209,8 +215,13 @@ def generate_all_configs():
     for dataset, dataset_config in DATASETS.items():
         # map dataset name for folder (tiny_imagenet -> tinyimagenet)
         dataset_folder = dataset.replace("_", "")
+        seen_overrides = set()
         
         for scenario in SCENARIOS.keys():
+            scenario_override = get_scenario_override(scenario, dataset_config)
+            if scenario_override in seen_overrides:
+                continue
+            seen_overrides.add(scenario_override)
             scenario_dir = CONF_DIR / dataset_folder / scenario
             scenario_dir.mkdir(parents=True, exist_ok=True)
             
@@ -226,6 +237,7 @@ def generate_all_configs():
                             model=model,
                             distribution=dist_name,
                             scenario=scenario,
+                            scenario_override=scenario_override,
                             dataset_config=dataset_config,
                             dist_config=dist_config,
                         )

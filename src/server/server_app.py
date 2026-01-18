@@ -23,6 +23,7 @@ from src.strategies.mifa import CustomMIFA
 from src.strategies.clusteredfl import CustomClusteredFL
 from src.strategies.scaffold import SCAFFOLD
 from src.strategies.diws import DIWS
+from src.strategies.fdms import FDMS
 # use Flower's built-in adaptive optimizers - they're well-tested
 from flwr.server.strategy import FedAdam, FedYogi, FedAdagrad
 
@@ -35,6 +36,7 @@ STRATEGY_REGISTRY: Dict[str, type] = {
     "clusteredfl": CustomClusteredFL,
     "scaffold": SCAFFOLD,
     "diws": DIWS,
+    "fdms": FDMS,
     # use Flower's built-in FedOpt strategies
     "fedadam": FedAdam,
     "fedyogi": FedYogi,
@@ -200,6 +202,18 @@ def create_strategy(
         return DIWS(
             aggregator_strategy=base_strategy,
             substitution_timeout=config.strategy.get("substitution_timeout", 600.0),
+        )
+
+    if strategy_name == "fdms":
+        base_strategy = CustomFedAvg(
+            **common_params,
+            inplace=config.strategy.get("inplace", True),
+        )
+        return FDMS(
+            aggregator_strategy=base_strategy,
+            min_common_rounds=config.strategy.get("min_common_rounds", 1),
+            fallback_mode=config.strategy.get("fallback_mode", "mean"),
+            similarity_eps=config.strategy.get("similarity_eps", 1e-12),
         )
 
     return strategy_class(**common_params, **strategy_params)
