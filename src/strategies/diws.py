@@ -269,7 +269,7 @@ class DIWS(Strategy):
         aggregated_results = FitRes(
             parameters=ndarrays_to_parameters(aggregated_parameters),
             num_examples=total_samples,
-            metrics=None,
+            metrics={},
             status=None,
         )
         return aggregated_results
