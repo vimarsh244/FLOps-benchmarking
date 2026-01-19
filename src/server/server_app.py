@@ -22,7 +22,10 @@ from src.strategies.fedprox import CustomFedProx
 from src.strategies.mifa import CustomMIFA
 from src.strategies.clusteredfl import CustomClusteredFL
 from src.strategies.scaffold import SCAFFOLD
-from src.strategies.fedopt import FedAdam, FedYogi, FedAdagrad
+from src.strategies.diws import DIWS
+from src.strategies.fdms import FDMS
+# use Flower's built-in adaptive optimizers - they're well-tested
+from flwr.server.strategy import FedAdam, FedYogi, FedAdagrad
 
 
 # strategy registry
@@ -32,6 +35,9 @@ STRATEGY_REGISTRY: Dict[str, type] = {
     "mifa": CustomMIFA,
     "clusteredfl": CustomClusteredFL,
     "scaffold": SCAFFOLD,
+    "diws": DIWS,
+    "fdms": FDMS,
+    # use Flower's built-in FedOpt strategies
     "fedadam": FedAdam,
     "fedyogi": FedYogi,
     "fedadagrad": FedAdagrad,
@@ -138,17 +144,20 @@ def create_strategy(
         strategy_params["proximal_mu"] = config.strategy.get("proximal_mu", 0.1)
     
     elif strategy_name == "mifa":
-        strategy_params["base_server_lr"] = config.strategy.get("base_server_lr", 0.1)
+        strategy_params["base_server_lr"] = config.strategy.get("base_server_lr", 1.0)
+        strategy_params["client_lr"] = config.client.get("learning_rate", 0.01)
+        strategy_params["local_epochs"] = config.client.get("local_epochs", 1)
+        strategy_params["batch_size"] = config.client.get("batch_size", 32)
         strategy_params["wait_for_all_clients_init"] = config.strategy.get(
             "wait_for_all_clients_init", True
         )
     
     elif strategy_name == "clusteredfl":
-        strategy_params["eps1_mean_update_norm"] = config.strategy.get(
-            "eps1_mean_update_norm", 0.05
+        strategy_params["cosine_similarity_threshold"] = config.strategy.get(
+            "cosine_similarity_threshold", 0.7
         )
-        strategy_params["eps2_max_update_norm"] = config.strategy.get(
-            "eps2_max_update_norm", 0.2
+        strategy_params["min_cosine_similarity"] = config.strategy.get(
+            "min_cosine_similarity", 0.3
         )
         strategy_params["split_warmup_rounds"] = config.strategy.get(
             "split_warmup_rounds", 5
@@ -166,12 +175,47 @@ def create_strategy(
         strategy_params["client_lr"] = config.strategy.get("client_lr", 0.01)
         strategy_params["warm_start"] = config.strategy.get("warm_start", False)
     
-    elif strategy_name in ["fedadam", "fedyogi", "fedadagrad"]:
-        strategy_params["server_lr"] = config.strategy.get("server_lr", 0.01)
+    elif strategy_name == "fedadam":
+        # Flower's FedAdam uses 'eta' for server learning rate
+        strategy_params["eta"] = config.strategy.get("eta", config.strategy.get("server_lr", 0.1))
+        strategy_params["beta_1"] = config.strategy.get("beta_1", 0.9)
+        strategy_params["beta_2"] = config.strategy.get("beta_2", 0.99)
+        strategy_params["tau"] = config.strategy.get("tau", 1e-9)
+    
+    elif strategy_name == "fedyogi":
+        # Flower's FedYogi uses 'eta' for server learning rate
+        strategy_params["eta"] = config.strategy.get("eta", config.strategy.get("server_lr", 0.01))
         strategy_params["beta_1"] = config.strategy.get("beta_1", 0.9)
         strategy_params["beta_2"] = config.strategy.get("beta_2", 0.99)
         strategy_params["tau"] = config.strategy.get("tau", 1e-3)
     
+    elif strategy_name == "fedadagrad":
+        # Flower's FedAdagrad uses 'eta' for server learning rate
+        strategy_params["eta"] = config.strategy.get("eta", config.strategy.get("server_lr", 0.1))
+        strategy_params["tau"] = config.strategy.get("tau", 1e-9)
+    
+    if strategy_name == "diws":
+        base_strategy = CustomFedAvg(
+            **common_params,
+            inplace=config.strategy.get("inplace", True),
+        )
+        return DIWS(
+            aggregator_strategy=base_strategy,
+            substitution_timeout=config.strategy.get("substitution_timeout", 600.0),
+        )
+
+    if strategy_name == "fdms":
+        base_strategy = CustomFedAvg(
+            **common_params,
+            inplace=config.strategy.get("inplace", True),
+        )
+        return FDMS(
+            aggregator_strategy=base_strategy,
+            min_common_rounds=config.strategy.get("min_common_rounds", 1),
+            fallback_mode=config.strategy.get("fallback_mode", "mean"),
+            similarity_eps=config.strategy.get("similarity_eps", 1e-12),
+        )
+
     return strategy_class(**common_params, **strategy_params)
 
 

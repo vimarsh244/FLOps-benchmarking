@@ -7,8 +7,11 @@ from datetime import datetime
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from src.utils.helpers import set_seed, save_config
+from src.utils.helpers import load_env_file, set_seed, save_config
 from src.utils.logging import setup_logging, get_logger, ExperimentLogger
+
+# load .env before hydra relocates the working directory so wandb sees WANDB_API_KEY
+load_env_file()
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
@@ -47,7 +50,7 @@ def run_simulation(cfg: DictConfig) -> None:
     from flwr.client import ClientApp
     from flwr.server import ServerApp
     
-    from src.clients.base_client import create_client_fn
+    from src.clients.registry import create_client_fn
     from src.server.server_app import create_server_fn
     
     logger = get_logger()

@@ -82,12 +82,14 @@ def get_transforms(
 def get_partitioner(
     partitioner_cfg: DictConfig,
     num_partitions: int,
+    label_key: str = "label",
 ) -> Partitioner:
     """Create a partitioner based on configuration.
     
     Args:
         partitioner_cfg: partitioner configuration from Hydra
         num_partitions: number of partitions to create
+        label_key: the label key from dataset config (used for partition_by)
     
     Returns:
         Configured partitioner
@@ -97,9 +99,10 @@ def get_partitioner(
     if name == "iid":
         return IidPartitioner(num_partitions=num_partitions)
     elif name == "dirichlet":
+        # use the dataset's label_key for partition_by
         return DirichletPartitioner(
             num_partitions=num_partitions,
-            partition_by=partitioner_cfg.get("partition_by", "label"),
+            partition_by=label_key,
             alpha=partitioner_cfg.get("alpha", 0.5),
             seed=partitioner_cfg.get("seed", 42),
         )
@@ -127,7 +130,9 @@ def get_federated_dataset(
     cache_key = f"{dataset_cfg.dataset_name}_{partitioner_cfg.name}_{num_partitions}"
     
     if cache_key not in _fds_cache:
-        partitioner = get_partitioner(partitioner_cfg, num_partitions)
+        # get label_key from dataset config (with fallback for backwards compatibility)
+        label_key = dataset_cfg.get("label_key", "label")
+        partitioner = get_partitioner(partitioner_cfg, num_partitions, label_key)
         _fds_cache[cache_key] = FederatedDataset(
             dataset=dataset_cfg.dataset_name,
             partitioners={"train": partitioner},
@@ -172,9 +177,9 @@ def load_data(
     train_transforms = get_transforms(dataset_cfg, is_train=True)
     test_transforms = get_transforms(dataset_cfg, is_train=False)
     
-    # determine image key (different datasets use different keys)
-    image_key = _get_image_key(dataset_cfg.dataset_name)
-    label_key = _get_label_key(dataset_cfg.dataset_name)
+    # get image and label keys from config (with fallbacks for backwards compatibility)
+    image_key = dataset_cfg.get("image_key", "img")
+    label_key = dataset_cfg.get("label_key", "label")
     
     def apply_train_transforms(batch):
         batch[image_key] = [train_transforms(img) for img in batch[image_key]]
@@ -200,6 +205,7 @@ def load_data(
         shuffle=True,
         collate_fn=collate_fn,
         num_workers=0,  # avoid issues with multiprocessing in FL
+        drop_last=True, # becasue resnet has batchnorm and if for one client last batch is not divisible by batch size, it will cause issues - so we drop it
     )
     
     test_loader = DataLoader(
@@ -211,21 +217,6 @@ def load_data(
     )
     
     return train_loader, test_loader
-
-
-def _get_image_key(dataset_name: str) -> str:
-    """Get the image key for a dataset."""
-    if "cifar" in dataset_name.lower():
-        return "img"
-    elif "imagenet" in dataset_name.lower():
-        return "image"
-    else:
-        return "img"  # default
-
-
-def _get_label_key(dataset_name: str) -> str:
-    """Get the label key for a dataset."""
-    return "label"  # most datasets use 'label'
 
 
 def get_centralized_testset(
@@ -247,8 +238,10 @@ def get_centralized_testset(
     dataset = load_dataset(dataset_cfg.dataset_name, split="test")
     
     test_transforms = get_transforms(dataset_cfg, is_train=False)
-    image_key = _get_image_key(dataset_cfg.dataset_name)
-    label_key = _get_label_key(dataset_cfg.dataset_name)
+    
+    # get image and label keys from config (with fallbacks for backwards compatibility)
+    image_key = dataset_cfg.get("image_key", "img")
+    label_key = dataset_cfg.get("label_key", "label")
     
     def apply_transforms(batch):
         batch[image_key] = [test_transforms(img) for img in batch[image_key]]

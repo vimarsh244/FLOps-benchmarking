@@ -1,9 +1,10 @@
-# FedYogi Strategy Configuration (FedOpt variant)
+# FedYogi Strategy Configuration
+# Uses Flower's built-in FedYogi: https://flower.ai/docs/framework/ref-api/flwr.server.strategy.FedYogi.html
 name: fedyogi
-_target_: src.strategies.fedopt.FedYogi
+_target_: flwr.server.strategy.FedYogi
 
-# FedYogi specific parameters
-server_lr: 0.01     # server-side learning rate (eta)
+# FedYogi hyperparameters (Flower's defaults)
+eta: 0.01           # server-side learning rate
 beta_1: 0.9         # first moment decay
 beta_2: 0.99        # second moment decay
 tau: 1e-3           # adaptivity parameter

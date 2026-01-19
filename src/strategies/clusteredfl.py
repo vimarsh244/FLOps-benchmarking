@@ -47,15 +47,24 @@ connected to the server.
 class CustomClusteredFL(Strategy):
     """Clustered Federated Learning strategy.
 
+    Based on: Clustered Federated Learning: Model-Agnostic Distributed Multi-Task
+              Optimization under Privacy Constraints (Sattler et al., 2019)
+
     Maintains per-cluster models and sends each client the model of its cluster.
     Supports dynamic client disconnect/rejoin and on-the-fly cluster splits.
 
+    Split detection uses cosine similarity between client updates (as per paper):
+    - If mean pairwise cosine similarity is high (clients agree) -> no split
+    - If min pairwise cosine similarity is low (clients disagree) -> trigger split
+
     Parameters
     ----------
-    eps1_mean_update_norm : float
-        Threshold for mean update norm to trigger split.
-    eps2_max_update_norm : float
-        Threshold for max update norm to trigger split.
+    cosine_similarity_threshold : float
+        Minimum mean cosine similarity to keep cluster together.
+        Below this triggers split consideration. Default 0.7.
+    min_cosine_similarity : float
+        If min pairwise cosine similarity falls below this, consider splitting.
+        Default 0.3.
     split_warmup_rounds : int
         Number of rounds to wait before allowing splits.
     split_cooldown_rounds : int
@@ -89,9 +98,9 @@ class CustomClusteredFL(Strategy):
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         inplace: bool = True,
-        # cfl specific knobs
-        eps1_mean_update_norm: float = 0.05,
-        eps2_max_update_norm: float = 0.2,
+        # cfl specific knobs (cosine similarity based, per paper)
+        cosine_similarity_threshold: float = 0.7,
+        min_cosine_similarity: float = 0.3,
         split_warmup_rounds: int = 5,
         split_cooldown_rounds: int = 3,
         min_clients_for_split: int = 3,
@@ -128,9 +137,9 @@ class CustomClusteredFL(Strategy):
         self._last_split_round: int = 0
         self._next_cluster_id: int = 0
 
-        # cfl params
-        self.eps1 = eps1_mean_update_norm
-        self.eps2 = eps2_max_update_norm
+        # cfl params (cosine similarity based)
+        self.cosine_sim_threshold = cosine_similarity_threshold
+        self.min_cosine_sim = min_cosine_similarity
         self.split_warmup_rounds = split_warmup_rounds
         self.split_cooldown_rounds = split_cooldown_rounds
         self.min_clients_for_split = min_clients_for_split
@@ -277,6 +286,42 @@ class CustomClusteredFL(Strategy):
             return np.array([], dtype=np.float32)
         return np.concatenate(vecs)
 
+    @staticmethod
+    def _compute_cosine_similarities(
+        update_vectors: List[np.ndarray],
+    ) -> Tuple[float, float]:
+        """Compute pairwise cosine similarities between update vectors.
+        
+        As per Sattler et al. paper, we compute cosine similarity between
+        client gradient updates to determine if they should be in the same cluster.
+        
+        Args:
+            update_vectors: List of flattened update vectors
+        
+        Returns:
+            Tuple of (mean_cosine_similarity, min_cosine_similarity)
+        """
+        if len(update_vectors) < 2:
+            return 1.0, 1.0
+        
+        eps = 1e-12
+        
+        # normalize vectors
+        norms = [np.linalg.norm(v) + eps for v in update_vectors]
+        normalized = [v / n for v, n in zip(update_vectors, norms)]
+        
+        # compute pairwise cosine similarities
+        similarities = []
+        for i in range(len(normalized)):
+            for j in range(i + 1, len(normalized)):
+                sim = float(np.dot(normalized[i], normalized[j]))
+                similarities.append(sim)
+        
+        if not similarities:
+            return 1.0, 1.0
+        
+        return float(np.mean(similarities)), float(np.min(similarities))
+
     def _binary_spherical_kmeans(self, X: np.ndarray) -> np.ndarray:
         """k=2 spherical k-means for cluster splitting."""
         m = X.shape[0]
@@ -327,11 +372,20 @@ class CustomClusteredFL(Strategy):
         if not self.accept_failures and failures:
             return None, {}
 
+        # filter out disconnected clients (those with num_examples=0 or empty parameters)
+        valid_results = [
+            (client, res) for client, res in results
+            if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
+        ]
+        
+        if not valid_results:
+            return None, {}
+
         # group results by cluster
         round_assign = self._round_assignments.get(server_round, {})
         grouped: Dict[int, List[Tuple[str, NDArrays, int]]] = defaultdict(list)
 
-        for client, fit_res in results:
+        for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             params_nd = parameters_to_ndarrays(fit_res.parameters)
             n = fit_res.num_examples
@@ -354,22 +408,23 @@ class CustomClusteredFL(Strategy):
                 upd_vecs.append(dv)
 
             if len(upd_vecs) >= self.min_clients_for_split:
-                norms = np.array([np.linalg.norm(v) for v in upd_vecs])
-                mean_norm = float(np.mean(norms))
-                max_norm = float(np.max(norms))
-
-                if (
+                # compute pairwise cosine similarities (as per Sattler et al. paper)
+                mean_cosine, min_cosine = self._compute_cosine_similarities(upd_vecs)
+                
+                # split if cosine similarity indicates divergence among clients
+                should_split = (
                     server_round >= self.split_warmup_rounds
                     and server_round - self._last_split_round >= self.split_cooldown_rounds
-                    and mean_norm < self.eps1
-                    and max_norm > self.eps2
-                ):
+                    and (mean_cosine < self.cosine_sim_threshold or min_cosine < self.min_cosine_sim)
+                )
+                
+                if should_split:
                     split_candidates.append(cid_cluster)
 
                 log(
                     INFO,
                     f"[CFL] Round {server_round} cluster {cid_cluster}: "
-                    f"mean_norm={mean_norm:.4f}, max_norm={max_norm:.4f}"
+                    f"mean_cosine={mean_cosine:.4f}, min_cosine={min_cosine:.4f}"
                 )
 
         # apply at most one split per round
@@ -437,10 +492,10 @@ class CustomClusteredFL(Strategy):
                 accum if accum is not None else next(iter(self._cluster_models.values()))
             )
 
-        # aggregate metrics
+        # aggregate metrics (use valid_results for metrics)
         metrics_aggregated: Dict[str, Scalar] = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
         # log fit metrics to wandb

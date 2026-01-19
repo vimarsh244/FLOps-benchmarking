@@ -9,17 +9,19 @@ defaults:
   - override /partitioner: dirichlet
   - override /scenario: baseline
   - override /logging: wandb
+  - override /scenario: node_drop_extreme
+
 
 # experiment identification
 experiment:
-  name: tiny_imagenet_100clients_fedprox
+  name: tiny_imagenet_100clients_fedprox_niid_0.5_node_drop_extreme
   seed: 42
 
 # server configuration for large scale
 server:
   num_rounds: 100
-  fraction_fit: 0.1       # sample 10% of clients per round (10 clients)
-  fraction_evaluate: 0.1
+  fraction_fit: 0.9       # sample 10% of clients per round (10 clients)
+  fraction_evaluate: 1.0
   min_fit_clients: 10
   min_evaluate_clients: 10
   min_available_clients: 100

@@ -6,6 +6,11 @@ _target_: src.datasets.loader.load_data
 dataset_name: uoft-cs/cifar100
 num_classes: 100
 
+# keys used in the huggingface dataset
+# note: cifar100 uses 'fine_label' for 100 classes, 'coarse_label' for 20 superclasses
+image_key: img
+label_key: fine_label
+
 # image properties
 image_size: 32
 channels: 3

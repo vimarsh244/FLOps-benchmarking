@@ -5,7 +5,10 @@ from src.strategies.fedprox import CustomFedProx
 from src.strategies.mifa import CustomMIFA
 from src.strategies.clusteredfl import CustomClusteredFL
 from src.strategies.scaffold import SCAFFOLD
-from src.strategies.fedopt import FedAdam, FedYogi
+from src.strategies.diws import DIWS
+from src.strategies.fdms import FDMS
+# use Flower's built-in FedOpt strategies
+from flwr.server.strategy import FedAdam, FedYogi, FedAdagrad
 
 __all__ = [
     "CustomFedAvg",
@@ -13,7 +16,10 @@ __all__ = [
     "CustomMIFA",
     "CustomClusteredFL",
     "SCAFFOLD",
+    "DIWS",
+    "FDMS",
     "FedAdam",
     "FedYogi",
+    "FedAdagrad",
 ]
 

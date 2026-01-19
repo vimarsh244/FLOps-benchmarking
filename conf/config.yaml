@@ -13,7 +13,7 @@ defaults:
 
 # experiment identification
 experiment:
-  name: ${strategy.name}_${dataset.name}_${model.name}_${scenario.name}
+  name: ${strategy.name}_${dataset.name}_${model.name}_${scenario.name}_${partitioner.name}
   seed: 42
   output_dir: outputs/${experiment.name}/${now:%Y-%m-%d_%H-%M-%S}
 
@@ -33,7 +33,7 @@ client:
   num_clients: 20  
   local_epochs: 1
   batch_size: 32
-  learning_rate: 0.01
+  learning_rate: 0.001
   optimizer: adam
   weight_decay: 0.0
 

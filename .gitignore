@@ -24,3 +24,5 @@ wandb/
 outputs/
 
 .env
+
+conf/experiment/**/*.yaml

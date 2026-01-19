@@ -1,0 +1,9 @@
+# ResNet18 with GroupNorm (for FedOpt compatibility)
+# use this model with FedAdam/FedYogi/FedAdagrad strategies
+name: resnet18_gn
+_target_: src.models.resnet.ResNet18
+
+# resnet specific parameters
+pretrained: false
+use_groupnorm: true  # replace BatchNorm with GroupNorm for FedOpt compatibility
+

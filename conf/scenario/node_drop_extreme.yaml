@@ -1,0 +1,19 @@
+# Extreme Node Drop Scenario - for testing/demonstration
+# More aggressive dropping to show clear accuracy difference
+name: node_drop
+_target_: src.scenarios.node_drop.NodeDropScenario
+
+enabled: true
+
+# drop more clients from round 1
+drop_events:
+  - client_ids: [2, 3, 4]
+    disconnect_round: 1
+    rejoin_round: 999
+
+# or use auto_mode to drop based on partition ID
+auto_mode:
+  enabled: false
+  start_partition_id: 2
+  disconnect_offset: 0
+  rejoin_round: 999

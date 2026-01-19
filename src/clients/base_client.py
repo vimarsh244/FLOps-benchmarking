@@ -135,7 +135,7 @@ class FlowerClient(NumPyClient):
         
         # check if client should participate (node drop scenario)
         if not self._should_participate(current_round):
-            print(f"[Client {self.partition_id}] Disconnected for round {current_round}")
+            print(f"[Client {self.partition_id}] DROPPED for round {current_round}")
             # return garbage to signal disconnection
             return [], 0, {"disconnected": True}
         
@@ -178,6 +178,10 @@ class FlowerClient(NumPyClient):
     ) -> Tuple[float, int, Dict[str, Scalar]]:
         """Evaluate the model on local test data.
         
+        Note: Evaluation always runs on ALL clients regardless of node drop status.
+        This ensures we measure true model performance on the full dataset.
+        Node drop only affects training, not evaluation.
+        
         Args:
             parameters: Model parameters from server
             config: Configuration from server
@@ -185,13 +189,6 @@ class FlowerClient(NumPyClient):
         Returns:
             Tuple of (loss, num_examples, metrics)
         """
-        current_round = config.get("current_round", 0)
-        
-        # check if client should participate
-        if not self._should_participate(current_round):
-            print(f"[Client {self.partition_id}] Disconnected for evaluation round {current_round}")
-            return 0.0, 0, {"disconnected": True}
-        
         start_time = time.time()
         
         self.set_parameters(parameters)
@@ -239,13 +236,14 @@ class FlowerClient(NumPyClient):
                 outputs = self.model(images)
                 loss = criterion(outputs, labels)
                 
-                # add proximal term for FedProx
+                # add proximal term for FedProx: (mu/2) * ||w - w_global||^2
                 if proximal_mu > 0 and self._global_params is not None:
                     proximal_term = 0.0
                     for local_param, global_param in zip(
                         self.model.parameters(), self._global_params
                     ):
-                        proximal_term += (local_param - global_param.to(self.device)).norm(2)
+                        # use squared L2 norm as per paper
+                        proximal_term += (local_param - global_param.to(self.device)).norm(2).pow(2)
                     loss = loss + (proximal_mu / 2) * proximal_term
                 
                 loss.backward()

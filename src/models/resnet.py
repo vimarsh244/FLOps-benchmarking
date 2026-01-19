@@ -6,6 +6,32 @@ import torchvision.models as models
 from typing import Optional
 
 
+def _replace_bn_with_gn(module: nn.Module, num_groups: int = 32) -> nn.Module:
+    """Replace all BatchNorm layers with GroupNorm.
+    
+    This is needed for FedOpt (FedAdam, FedYogi) compatibility because
+    BatchNorm's running statistics don't work well with adaptive server optimizers.
+    
+    Args:
+        module: PyTorch module to modify
+        num_groups: Number of groups for GroupNorm (default 32)
+    
+    Returns:
+        Modified module with GroupNorm instead of BatchNorm
+    """
+    for name, child in module.named_children():
+        if isinstance(child, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+            num_channels = child.num_features
+            # ensure num_groups divides num_channels
+            groups = min(num_groups, num_channels)
+            while num_channels % groups != 0:
+                groups -= 1
+            setattr(module, name, nn.GroupNorm(groups, num_channels))
+        else:
+            _replace_bn_with_gn(child, num_groups)
+    return module
+
+
 def _create_resnet(
     model_fn,
     num_classes: int,
@@ -65,7 +91,15 @@ class ResNet18(nn.Module):
         num_classes: int = 10,
         pretrained: bool = False,
         in_channels: int = 3,
+        use_groupnorm: bool = False,
     ):
+        """
+        Args:
+            num_classes: Number of output classes
+            pretrained: Whether to use pretrained weights
+            in_channels: Number of input channels
+            use_groupnorm: If True, replace BatchNorm with GroupNorm (for FedOpt compatibility)
+        """
         super().__init__()
         self.model = _create_resnet(
             models.resnet18,
@@ -73,6 +107,8 @@ class ResNet18(nn.Module):
             pretrained=pretrained,
             in_channels=in_channels,
         )
+        if use_groupnorm:
+            _replace_bn_with_gn(self.model)
         self.num_classes = num_classes
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -87,6 +123,7 @@ class ResNet34(nn.Module):
         num_classes: int = 10,
         pretrained: bool = False,
         in_channels: int = 3,
+        use_groupnorm: bool = False,
     ):
         super().__init__()
         self.model = _create_resnet(
@@ -95,6 +132,8 @@ class ResNet34(nn.Module):
             pretrained=pretrained,
             in_channels=in_channels,
         )
+        if use_groupnorm:
+            _replace_bn_with_gn(self.model)
         self.num_classes = num_classes
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -109,6 +148,7 @@ class ResNet50(nn.Module):
         num_classes: int = 10,
         pretrained: bool = False,
         in_channels: int = 3,
+        use_groupnorm: bool = False,
     ):
         super().__init__()
         self.model = _create_resnet(
@@ -117,6 +157,8 @@ class ResNet50(nn.Module):
             pretrained=pretrained,
             in_channels=in_channels,
         )
+        if use_groupnorm:
+            _replace_bn_with_gn(self.model)
         self.num_classes = num_classes
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

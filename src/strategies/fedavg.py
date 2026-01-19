@@ -206,18 +206,32 @@ class CustomFedAvg(Strategy):
         if not self.accept_failures and failures:
             return None, {}
 
+        # filter out disconnected clients (those with num_examples=0 or empty parameters)
+        valid_results = [
+            (client, res) for client, res in results
+            if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
+        ]
+        
+        # log aggregation info
+        dropped_count = len(results) - len(valid_results)
+        if dropped_count > 0:
+            print(f"[FedAvg] Round {server_round}: Received {len(results)} results, {len(valid_results)} valid, {dropped_count} dropped")
+        
+        if not valid_results:
+            return None, {}
+        
         if self.inplace:
-            aggregated_ndarrays = aggregate_inplace(results)
+            aggregated_ndarrays = aggregate_inplace(valid_results)
         else:
-            weights_results = get_parameters_from_results(results)
+            weights_results = get_parameters_from_results(valid_results)
             aggregated_ndarrays = aggregate_parameters(weights_results, inplace=False)
 
         parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
 
-        # aggregate custom metrics
+        # aggregate custom metrics (use valid_results, not all results)
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
         # log fit metrics to wandb

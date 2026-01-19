@@ -14,8 +14,11 @@ MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
     "simplecnn": SimpleCNN,
     "simplecnn_large": SimpleCNNLarge,
     "resnet18": ResNet18,
+    "resnet18_gn": ResNet18,  # with GroupNorm (via use_groupnorm=True in config)
     "resnet34": ResNet34,
+    "resnet34_gn": ResNet34,  # with GroupNorm
     "resnet50": ResNet50,
+    "resnet50_gn": ResNet50,  # with GroupNorm
     "resnet_cifar": ResNetCIFAR,
     "vit": ViT,
     "vit_small": ViTSmall,

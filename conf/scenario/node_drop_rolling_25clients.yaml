@@ -1,0 +1,54 @@
+# rolling node drop scenario for 25 clients (tinyimagenet)
+# simulates ~20-28% clients offline at any time (5-7 clients)
+name: node_drop
+_target_: src.scenarios.node_drop.NodeDropScenario
+
+enabled: true
+
+# rolling drop pattern: ~5-7 clients offline at any time (20-28%)
+# more aggressive to match user requirement of "at least 7 dropped clients"
+# wave 1: clients 0,1,2,3 drop at round 5, rejoin at round 14
+# wave 2: clients 4,5,6,7 drop at round 10, rejoin at round 19
+# wave 3: clients 8,9,10,11 drop at round 15, rejoin at round 24
+# wave 4: clients 12,13,14 drop at round 20, rejoin at round 29
+# wave 5: clients 15,16,17 drop at round 25, rejoin at round 34
+# wave 6: clients 18,19,20 drop at round 30, rejoin at round 39
+# wave 7: clients 21,22,23 drop at round 35, rejoin at round 44
+# wave 8: clients 24,0,1 drop at round 40, rejoin at round 49
+drop_events:
+  # wave 1 (4 clients)
+  - client_ids: [0, 1, 2, 3]
+    disconnect_round: 5
+    rejoin_round: 14
+  # wave 2 (4 clients, now 7 total offline from rounds 10-14)
+  - client_ids: [4, 5, 6, 7]
+    disconnect_round: 10
+    rejoin_round: 19
+  # wave 3
+  - client_ids: [8, 9, 10, 11]
+    disconnect_round: 15
+    rejoin_round: 24
+  # wave 4
+  - client_ids: [12, 13, 14]
+    disconnect_round: 20
+    rejoin_round: 29
+  # wave 5
+  - client_ids: [15, 16, 17]
+    disconnect_round: 25
+    rejoin_round: 34
+  # wave 6
+  - client_ids: [18, 19, 20]
+    disconnect_round: 30
+    rejoin_round: 39
+  # wave 7
+  - client_ids: [21, 22, 23]
+    disconnect_round: 35
+    rejoin_round: 44
+  # wave 8
+  - client_ids: [24, 0, 1]
+    disconnect_round: 40
+    rejoin_round: 49
+
+auto_mode:
+  enabled: false
+

@@ -49,22 +49,29 @@ connected to the server.
 class CustomMIFA(Strategy):
     """MIFA strategy for handling device unavailability.
 
+    Paper: Fast Federated Learning in the Presence of Arbitrary Device Unavailability
+           https://arxiv.org/abs/2106.04159
+
     Maintains a cached per-client update table U_i. On each round t, for each
     successful client i we set:
 
-        U_i <- (w_i^t - w^t) / eta_t
+        U_i <- (w_i^t - w^t) / (K * eta_local)
+
+    where K is the number of local steps and eta_local is the client learning rate.
+    This normalizes updates to be comparable across clients.
 
     Then the global is updated using the average cached update across ALL clients:
 
-        w^{t+1} = w^t + eta_t * (1/N) * sum_i U_i
-
-    The server step-size follows an inverse-proportional decay schedule:
-        eta_t = base_server_lr / (true_round + 1)
+        w^{t+1} = w^t + eta_server * (1/N) * sum_i U_i
 
     Parameters
     ----------
     base_server_lr : float
-        Base server learning rate (decays as 1/t).
+        Base server learning rate for aggregation.
+    client_lr : float
+        Client-side learning rate (used for update normalization).
+    local_steps : int
+        Number of local SGD steps per client (used for normalization).
     wait_for_all_clients_init : bool
         If True, wait for all clients to participate before starting
         the MIFA update rule.
@@ -90,7 +97,11 @@ class CustomMIFA(Strategy):
         initial_parameters: Optional[Parameters] = None,
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        base_server_lr: float = 0.1,
+        base_server_lr: float = 1.0,
+        client_lr: float = 0.01,
+        local_steps: int = 1,
+        local_epochs: int = 1,
+        batch_size: int = 32,
         wait_for_all_clients_init: bool = True,
     ) -> None:
         super().__init__()
@@ -115,7 +126,11 @@ class CustomMIFA(Strategy):
         self.evaluate_metrics_aggregation_fn = evaluate_metrics_aggregation_fn or weighted_average
 
         # mifa state
-        self._base_lr = float(base_server_lr)
+        self._server_lr = float(base_server_lr)
+        self._client_lr = float(client_lr)
+        self._local_steps = int(local_steps)
+        self._local_epochs = int(local_epochs)
+        self._batch_size = int(batch_size)
         self._true_round = 0  # counts only updates after table init
         self._table_initialized = False
         self._wait_for_all = wait_for_all_clients_init
@@ -124,7 +139,7 @@ class CustomMIFA(Strategy):
         self._latest_global: Optional[NDArrays] = None
 
     def __repr__(self) -> str:
-        return f"CustomMIFA(accept_failures={self.accept_failures}, base_server_lr={self._base_lr})"
+        return f"CustomMIFA(server_lr={self._server_lr}, client_lr={self._client_lr})"
 
     def num_fit_clients(self, num_available_clients: int) -> Tuple[int, int]:
         num_clients = int(num_available_clients * self.fraction_fit)
@@ -144,9 +159,28 @@ class CustomMIFA(Strategy):
             self._latest_global = parameters_to_ndarrays(initial_parameters)
         return initial_parameters
 
-    def _current_eta(self) -> float:
-        """Current learning rate with inverse decay."""
-        return self._base_lr / float(self._true_round + 1)
+    def _normalization_factor(self, num_samples: int = 0) -> float:
+        """Get the normalization factor for client updates: K * eta_local.
+        
+        Args:
+            num_samples: Number of samples the client trained on.
+                        Used to estimate actual gradient steps.
+        
+        The number of gradient steps K = local_epochs * ceil(num_samples / batch_size).
+        If local_steps is explicitly set > 1, use that instead.
+        """
+        if self._local_steps > 1:
+            # use configured local_steps if explicitly set
+            actual_steps = self._local_steps
+        elif num_samples > 0 and self._batch_size > 0:
+            # estimate from training config
+            batches_per_epoch = max(1, (num_samples + self._batch_size - 1) // self._batch_size)
+            actual_steps = self._local_epochs * batches_per_epoch
+        else:
+            # fallback to 1 epoch worth of steps
+            actual_steps = max(1, self._local_steps)
+        
+        return float(actual_steps) * self._client_lr
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -221,26 +255,43 @@ class CustomMIFA(Strategy):
         if not self.accept_failures and failures:
             return None, {}
 
-        if self._latest_global is None:
-            self._latest_global = parameters_to_ndarrays(results[0][1].parameters)
+        # filter out disconnected clients (those with num_examples=0 or empty parameters)
+        valid_results = [
+            (client, res) for client, res in results
+            if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
+        ]
+        
+        if not valid_results:
+            # return current global if no valid results
+            if self._latest_global is not None:
+                return ndarrays_to_parameters(self._latest_global), {}
+            return None, {}
 
-        # expand known clients set
+        if self._latest_global is None:
+            self._latest_global = parameters_to_ndarrays(valid_results[0][1].parameters)
+
+        # expand known clients set (use all results to track client IDs)
         for client, _ in results:
             cid = getattr(client, "cid", None) or str(client)
             self._all_client_ids.add(cid)
 
         self._ensure_table_entries()
 
-        # compute normalized updates
-        eta_t = self._current_eta()
+        # compute normalized updates (only for valid results)
+        # normalize by K * eta_local so updates are comparable across clients
         old_global = copy_weights(self._latest_global)
 
-        for client, fit_res in results:
+        for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             w_i = parameters_to_ndarrays(fit_res.parameters)
-            # delta = (w_i - w_t) / eta_t
+            
+            # compute normalization factor based on this client's training
+            num_samples = fit_res.num_examples
+            norm_factor = self._normalization_factor(num_samples)
+            
+            # U_i = (w_i - w_t) / (K * eta_local)
             upd = [
-                (np.asarray(w_i[k], dtype=np.float32) - np.asarray(old_global[k], dtype=np.float32)) / np.float32(eta_t)
+                (np.asarray(w_i[k], dtype=np.float32) - np.asarray(old_global[k], dtype=np.float32)) / np.float32(norm_factor)
                 for k in range(len(w_i))
             ]
             self._update_table[cid] = upd
@@ -257,30 +308,30 @@ class CustomMIFA(Strategy):
                 params = ndarrays_to_parameters(self._latest_global)
                 metrics_aggregated = {}
                 if self.fit_metrics_aggregation_fn:
-                    fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+                    fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
                     metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
                 return params, metrics_aggregated
             self._table_initialized = True
 
-        # compute mean of cached updates
+        # compute mean of cached updates across ALL clients (including stale ones)
         self._ensure_table_entries()
         N = max(1, len(self._all_client_ids))
         mean_upd = zeros_like(self._latest_global)
         for cid in self._all_client_ids:
             add_inplace(mean_upd, self._update_table[cid], alpha=1.0 / float(N))
 
-        # apply server update: w_{t+1} = w_t + eta_t * mean(U)
+        # apply server update: w_{t+1} = w_t + eta_server * mean(U)
         new_global = copy_weights(old_global)
-        add_inplace(new_global, mean_upd, alpha=eta_t)
+        add_inplace(new_global, mean_upd, alpha=self._server_lr)
         self._latest_global = new_global
         self._true_round += 1
 
         params = ndarrays_to_parameters(self._latest_global)
 
-        # aggregate metrics
+        # aggregate metrics (use valid_results for metrics)
         metrics_aggregated: Dict[str, Scalar] = {}
         if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in valid_results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
 
         # log fit metrics to wandb

@@ -1,0 +1,14 @@
+# Dirichlet (Non-IID) Partitioner Configuration - High Skew
+# alpha = 0.1 creates high heterogeneity across clients (very non-iid)
+name: dirichlet
+_target_: flwr_datasets.partitioner.DirichletPartitioner
+
+# high heterogeneity setting (very skewed)
+alpha: 0.1
+
+# partition by label
+partition_by: label
+
+# random seed for reproducibility
+seed: 42
+

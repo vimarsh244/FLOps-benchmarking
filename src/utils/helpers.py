@@ -1,14 +1,34 @@
 """Utility functions and helpers."""
 
+import logging
 import os
 import json
 import random
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 import numpy as np
 import torch
 import yaml
+
+
+def load_env_file(filename: str = ".env") -> bool:
+    """Load environment variables from a .env file if available."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return False
+
+    project_root = Path(__file__).resolve().parents[2]
+    env_path = project_root / filename
+
+    if not env_path.exists():
+        return False
+
+    loaded = load_dotenv(dotenv_path=env_path, override=False)
+    if loaded:
+        logging.getLogger(__name__).debug(f"loaded environment variables from {env_path}")
+    return loaded
 
 
 def set_seed(seed: int) -> None:

@@ -6,6 +6,10 @@ _target_: src.datasets.loader.load_data
 dataset_name: uoft-cs/cifar10
 num_classes: 10
 
+# keys used in the huggingface dataset
+image_key: img
+label_key: label
+
 # image properties
 image_size: 32
 channels: 3

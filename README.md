@@ -1,6 +1,6 @@
 # FLOps Benchmarking
 
-A comprehensive federated learning benchmarking framework built with Flower and PyTorch. Supports multiple FL strategies, datasets, models, and scenarios with full Hydra configuration management.
+A FL benchmarking framework built with Flower and PyTorch. Supports multiple FL strategies, datasets, models, and scenarios and using hydra for configs.
 
 ## Features
 
@@ -24,16 +24,29 @@ A comprehensive federated learning benchmarking framework built with Flower and 
 cd FLOps-benchmarking
 
 # create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# or: .venv\Scripts\activate  # Windows
+# recommended to use conda
+conda create -n flops python=3.10
+conda activate flops
+
+# can use venv
+# python -m venv .venv
+# source .venv/bin/activate  # Linux/Mac
 
 # install dependencies
 pip install -r requirements.txt
-
-# or install as package
-pip install -e .
 ```
+
+### Authenticate W&B with `.env`
+
+1. Copy `env.example` to `.env` and paste your secrets from the [W&B settings page](https://wandb.ai/authorize):
+   ```bash
+   cp env.example .env
+   ```
+2. Fill in `WANDB_API_KEY`, `WANDB_ENTITY`, `WANDB_PROJECT`, and optionally tweak `WANDB_MODE`. The W&B backend treats the `WANDB_API_KEY` environment variable as a non-interactive login token (`wandb login` automatically consumes it as documented in [wandb.login](https://docs.wandb.ai/ref/python/login)).
+3. Run experiments as usual. `python-dotenv` is loaded at startup, so `src.main` and `src.run_distributed` always expose the values to W&B.
+4. If you need to refresh the local CLI cache, you can still run `wandb login --relogin "$WANDB_API_KEY"` and it will reuse the same environment variable instead of prompting.
+
+Keep your real `.env` out of version control (already covered by `.gitignore`).
 
 ### Run a Simulation
 
@@ -139,6 +152,13 @@ Uses control variates to reduce client drift.
 
 ```bash
 python -m src.main strategy=scaffold strategy.server_lr=1.0
+```
+
+### DIWS
+Substitutes dropped client updates based on label distribution.
+
+```bash
+python -m src.main strategy=diws
 ```
 
 ### FedOpt (FedAdam, FedYogi)
