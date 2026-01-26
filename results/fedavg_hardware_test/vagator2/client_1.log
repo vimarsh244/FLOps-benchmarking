@@ -1,9 +1,0 @@
-[2025-11-28 06:41:15] INFO - flops - Starting client 1, connecting to 10.8.1.221:8080
-Using the latest cached version of the dataset since uoft-cs/cifar10 couldn't be found on the Hugging Face Hub (offline mode is enabled).
-Found the latest cached dataset configuration 'plain_text' at /home/nvidia/.cache/huggingface/datasets/uoft-cs___cifar10/plain_text/0.0.0/0b2714987fa478483af9968de7c934580d0bb9a2 (last modified on Fri Nov 28 05:23:39 2025).
-[92mINFO [0m:      
-[92mINFO [0m:      Received: evaluate message ef722790-03f9-49e2-b6e8-79d1935237b7
-[92mINFO [0m:      Sent reply
-[92mINFO [0m:      
-[92mINFO [0m:      Received: train message 4c40d160-a9b3-42a3-a736-664bde1d5270
-[92mINFO [0m:      Sent reply
