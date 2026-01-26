@@ -28,6 +28,9 @@ timm>=0.9.0
 # Utilities
 pyyaml>=6.0
 
+# FHE
+tenseal
+
 # Optional: GPU monitoring (uncomment if using NVIDIA GPUs)
 # pynvml>=11.5.0
 

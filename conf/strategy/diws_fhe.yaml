@@ -1,0 +1,23 @@
+# DIWS FHE Strategy Configuration
+name: diws_fhe
+_target_: src.strategies.diws_fhe.DIWSFHE
+
+# base strategy settings
+substitution_timeout: 600.0
+inplace: true
+
+# fhe settings shared across server and client
+fhe:
+  server_context_path: server_context.pkl
+  client_context_path: client_context.pkl
+  poly_modulus_degree: 16384
+  coeff_mod_bit_sizes: [60, 29, 29, 29, 29, 29, 29, 29, 60]
+  global_scale_bits: 29
+  binary_search_iterations: 5
+  mask_range: [10.0, 100.0]
+  max_protocol_iters: 3
+  feasibility_epsilon: 0.01
+  subset_epochs: 1
+  metrics_enabled: true
+  context_load_retries: 20
+  context_load_delay_s: 0.5

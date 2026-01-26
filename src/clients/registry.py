@@ -11,6 +11,7 @@ from omegaconf import DictConfig
 
 from src.clients.base_client import FlowerClient
 from src.clients.scaffold_client import ScaffoldClient
+from src.clients.diws_fhe_client import FheDiwsClient
 
 
 # mapping of client types to their classes
@@ -26,6 +27,7 @@ CLIENT_REGISTRY = {
     "mifa": FlowerClient,
     "clusteredfl": FlowerClient,
     "scaffold": ScaffoldClient,
+    "diws_fhe": FheDiwsClient,
 }
 
 
@@ -66,6 +68,8 @@ def get_client_type_for_strategy(strategy_name: str) -> str:
     # scaffold requires its own client
     if "scaffold" in strategy_lower:
         return "scaffold"
+    if "diws_fhe" in strategy_lower or "fhe_diws" in strategy_lower:
+        return "diws_fhe"
     
     # all other strategies use the base client
     return "base"

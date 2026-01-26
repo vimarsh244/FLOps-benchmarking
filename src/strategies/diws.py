@@ -81,6 +81,7 @@ class DIWS(Strategy):
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """Aggregate fit results, substituting dropped clients if needed."""
         if server_round == 1:
+            # cache per-client label distribution from round 1
             for client_proxy, fitres in results:
                 if not fitres.metrics or "label_distribution" not in fitres.metrics:
                     continue
@@ -90,9 +91,9 @@ class DIWS(Strategy):
                 self.label_distribution[client_proxy.cid] = client_label_distribution
 
         print(f"Number of results before substitution: {len(results)}")
+        # run subset training if any clients dropped
         self.substitute_dropped_clients(server_round, results, failures)
         print(f"Number of results after substitution: {len(results)}")
-
         return self.aggregator_strategy.aggregate_fit(server_round, results, failures)
 
     def aggregate_evaluate(
@@ -118,6 +119,7 @@ class DIWS(Strategy):
             print(f"No dropped clients to substitute in round {server_round}.")
             return
 
+        # build target subset distributions for active clients
         active_client_ids = [client_proxy.cid for client_proxy, _ in results]
         client_subset_distributions = self.get_subset_distribution_for_active_clients(
             active_client_ids
@@ -128,6 +130,7 @@ class DIWS(Strategy):
             )
             return
 
+        # trigger subset training on active clients
         with ThreadPoolExecutor() as executor:
             futures = []
             for client_proxy, _ in results:
@@ -149,6 +152,7 @@ class DIWS(Strategy):
                 )
             outputs = [future.result() for future in futures]
 
+        # aggregate subset updates and append as a synthetic result
         substituted_parameters_fitres = self.aggregate_substitution_parameters(outputs)
         results.append((None, substituted_parameters_fitres))
 

@@ -29,6 +29,7 @@ dependencies = [
     "tqdm>=4.65.0",
     "pyyaml>=6.0",
     "timm>=0.9.0",
+    "tenseal",
 ]
 
 [project.optional-dependencies]
