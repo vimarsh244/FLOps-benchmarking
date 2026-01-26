@@ -1,0 +1,51 @@
+---
+# Download dataset on each client individually to ensure valid cache
+# and prevent proxy overload.
+
+- name: Sequential Dataset Download
+  hosts: clients:!vagator1:!vagator2
+  become: false
+  # CRITICAL: Run on 1 host at a time to prevent proxy crash
+  serial: 1
+  
+  vars:
+    # Enable Proxy but DISABLE Offline Mode for this task
+    proxy_env:
+      http_proxy: "http://10.8.1.221:8888"
+      https_proxy: "http://10.8.1.221:8888"
+      HF_HUB_DISABLE_SSL_VERIFY: "1"
+      CURL_CA_BUNDLE: ""
+      # Ensure we are ONLINE for this repair step
+      HF_DATASETS_OFFLINE: "0"
+      HF_HUB_OFFLINE: "0"
+    python_env: ~/envs/flops/bin/python
+
+  tasks:
+    - name: Repair/Install missing libraries
+      pip:
+        # Installing specific versions to ensure compatibility
+        name: 
+          - datasets==2.19.2
+          - hydra-core
+          - flwr[simulation]
+        virtualenv: "{{ python_env | dirname | dirname }}"
+        # Force proxy usage to bypass firewall SSL errors
+        extra_args: "--proxy http://10.8.1.221:8888 --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org"
+      environment: "{{ proxy_env }}"
+
+    - name: Wipe broken cache (Start Fresh)
+      file:
+        path: "~/.cache/huggingface/datasets"
+        state: absent
+
+    - name: Download CIFAR-10 locally
+      shell: |
+        {{ python_env }} -c "from datasets import load_dataset; load_dataset('uoft-cs/cifar10')"
+      environment: "{{ proxy_env }}"
+      async: 1200 # Increased timeout to 20 mins for slow downloads
+      poll: 5
+      register: download_result
+
+    - name: Verify download
+      debug:
+        msg: "Download complete on {{ inventory_hostname }}"

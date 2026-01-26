@@ -7,33 +7,73 @@
   
   vars:
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
-    server_host: "{{ ansible_host | default('0.0.0.0') }}"
-    server_port: "{{ server_port | default(8080) }}"
-    num_rounds: "{{ num_rounds | default(50) }}"
+    # wandb configuration - set wandb_api_key in inventory or extra vars
+    enable_wandb: "{{ wandb_enabled | default(true) }}"
+    wandb_project_name: "{{ wandb_project | default('flops-benchmarking') }}"
+    wandb_run_name: "{{ wandb_name | default('') }}"
+    # Define Proxy Environment
+    proxy_env:
+      http_proxy: "http://10.1.19.113:8888"
+      https_proxy: "http://10.1.19.113:8888"
+      # CRITICAL FIX: Bypass proxy for local connections (Vagator2 IP)
+      no_proxy: "10.1.19.113,localhost,127.0.0.1,::1,api.wandb.ai,wandb.ai"
+      # Disable SSL Verify for Hugging Face downloads to bypass firewall cert issues
+      HF_HUB_DISABLE_SSL_VERIFY: "1"
+      CURL_CA_BUNDLE: ""
+      HF_DATASETS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"
+      # wandb config - set WANDB_API_KEY in your environment or inventory
+      WANDB_API_KEY: "{{ wandb_api_key | default(lookup('env', 'WANDB_API_KEY')) }}"
+      # use offline mode if no API key is provided
+      WANDB_MODE: "{{ 'online' if (wandb_api_key is defined and wandb_api_key) or lookup('env', 'WANDB_API_KEY') else 'offline' }}"
   
   tasks:
     - name: Start Flower server
       shell: |
         cd {{ repo_path }}
-        nohup python -m src.run_distributed server \
-          --host {{ server_host }} \
-          --port {{ server_port }} \
-          --num-rounds {{ num_rounds }} \
+        # Added -u for unbuffered output
+        nohup {{ python_env }} -u -m src.run_distributed server \
+          --host {{ ansible_host | default('0.0.0.0') }} \
+          --port {{ server_port | default(8080) }} \
           > server.log 2>&1 &
         echo $!
       register: server_pid
       async: 10
       poll: 0
-    
+      # Apply proxy settings to the server process
+      environment: "{{ proxy_env }}"
+      
     - name: Wait for server to start
       wait_for:
-        port: "{{ server_port }}"
-        delay: 2
-        timeout: 30
-    
+        host: "{{ ansible_host | default('0.0.0.0') }}"
+        port: "{{ server_port | default(8080) }}"
+        delay: 5
+        timeout: 60
+      register: server_check
+      ignore_errors: yes
+
+    - name: Check server log on failure
+      command: "cat {{ repo_path }}/server.log"
+      register: server_log_output
+      when: server_check.failed
+      
+    - name: Show server log
+      debug:
+        var: server_log_output.stdout_lines
+      when: server_check.failed
+
+    - name: Fail if server did not start
+      fail:
+        msg: "Server failed to start. Check the log output above."
+      when: server_check.failed
+      
     - name: Display server info
       debug:
-        msg: "Server started on {{ server_host }}:{{ server_port }}"
+        msg: |
+          Server started on {{ ansible_host | default('0.0.0.0') }}:{{ server_port | default(8080) }}
+          To monitor server logs in real-time, SSH to server and run:
+            tail -f {{ repo_path }}/server.log
+          WandB mode: {{ 'online' if (wandb_api_key is defined and wandb_api_key) or lookup('env', 'WANDB_API_KEY') else 'offline' }}
 
 
 - name: Start FL Clients
@@ -42,23 +82,52 @@
   
   vars:
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
-    server_address: "{{ server_address | default('localhost:8080') }}"
+    # Define Proxy Environment
+    proxy_env:
+      http_proxy: "http://10.1.19.113:8888"
+      https_proxy: "http://10.1.19.113:8888"
+      # CRITICAL FIX: Bypass proxy for local connections (Vagator2 IP)
+      no_proxy: "10.1.19.113,localhost,127.0.0.1,::1"
+      # Disable SSL verify specifically for Hugging Face
+      HF_HUB_DISABLE_SSL_VERIFY: "1"
+      CURL_CA_BUNDLE: ""
+      HF_DATASETS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"
   
   tasks:
+    - name: Synchronize code to client devices
+      synchronize:
+        src: "{{ repo_path }}"
+        dest: "{{ repo_path }}"
+        delete: yes
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+          - "--exclude=outputs/"
+          - "--exclude=.venv"
+          - "--exclude=*.egg-info"
+          - "--exclude=deployment" 
+      delegate_to: localhost
+
+      
     - name: Start Flower client
       shell: |
         cd {{ repo_path }}
+        # Uses server_address from inventory, defaults to localhost if missing
         {{ python_env }} -m src.run_distributed client \
-          --server-address {{ server_address }} \
+          --server-address {{ server_address | default('localhost:8080') }} \
           --partition-id {{ partition_id }} \
           > client_{{ partition_id }}.log 2>&1
-      async: 7200  # 2 hour timeout
+      async: 28800  # 8hr timeout
       poll: 0
       register: client_job
-    
+      # Apply proxy settings to the client process
+      environment: "{{ proxy_env }}"
+      
     - name: Display client info
       debug:
-        msg: "Client {{ partition_id }} started on {{ inventory_hostname }}, connecting to {{ server_address }}"
+        msg: "Client {{ partition_id }} started on {{ inventory_hostname }}, connecting to {{ server_address | default('localhost:8080') }}"
 
 
 - name: Wait for Experiment Completion
@@ -71,10 +140,37 @@
         jid: "{{ client_job.ansible_job_id }}"
       register: job_result
       until: job_result.finished
-      retries: 720  # 2 hours at 10s intervals
+      retries: 2880  # 2 hours at 10s intervals
       delay: 10
-    
+      
     - name: Display completion status
       debug:
         msg: "Client {{ partition_id }} completed with status {{ job_result.rc | default('unknown') }}"
 
+
+- name: Collect Server Results
+  hosts: servers
+  become: false
+  
+  vars:
+    repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+  
+  tasks:
+    - name: Read server log
+      command: "cat {{ repo_path }}/server.log"
+      register: server_final_log
+      ignore_errors: yes
+      
+    - name: Display server log summary
+      debug:
+        msg: "{{ server_final_log.stdout_lines | default(['No server log found']) }}"
+      
+    - name: Extract round metrics from server log
+      shell: "grep -E 'Round [0-9]+ metrics' {{ repo_path }}/server.log | tail -20"
+      register: round_metrics
+      ignore_errors: yes
+      
+    - name: Display final round metrics
+      debug:
+        msg: "{{ round_metrics.stdout_lines | default(['No round metrics found']) }}"
+      when: round_metrics.stdout_lines | default([]) | length > 0

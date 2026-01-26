@@ -8,6 +8,10 @@
   vars:
     local_repo_path: "{{ playbook_dir }}/../../"
     remote_repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+    # Proxy configuration for vagator2 gateway
+    proxy_env:
+      http_proxy: "http://10.8.1.221:8888"
+      https_proxy: "http://10.8.1.221:8888"
   
   tasks:
     - name: Synchronize code to remote devices
@@ -22,15 +26,28 @@
           - "--exclude=outputs/"
           - "--exclude=.venv"
           - "--exclude=*.egg-info"
+          - "--exclude=deployment" 
       delegate_to: localhost
     
+    # FIX 1: Force install older huggingface_hub compatible with Python 3.8
+    # FIX 2: Added extra_args to bypass SSL errors via proxy
+    - name: Install Python 3.8 compatible libraries
+      pip:
+        name: "huggingface_hub<0.31.0"
+        virtualenv: "{{ python_env | dirname | dirname }}"
+        state: present
+        extra_args: "--proxy http://10.8.1.221:8888 --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org"
+      environment: "{{ proxy_env }}"
+
+    # FIX 3: Added extra_args here as well for requirements.txt
     - name: Install Python dependencies
       pip:
         requirements: "{{ remote_repo_path }}/requirements.txt"
         virtualenv: "{{ python_env | dirname | dirname }}"
         state: present
+        extra_args: "--proxy http://10.8.1.221:8888 --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org"
+      environment: "{{ proxy_env }}"
     
     - name: Display sync status
       debug:
         msg: "Code synced to {{ inventory_hostname }}:{{ remote_repo_path }}"
-
