@@ -17,4 +17,3 @@ __all__ = [
     "get_client_class",
     "get_client_type_for_strategy",
 ]
-

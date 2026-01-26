@@ -8,7 +8,6 @@ from src.models.simple_cnn import SimpleCNN, SimpleCNNLarge
 from src.models.resnet import ResNet18, ResNet34, ResNet50, ResNetCIFAR
 from src.models.vit import ViT, ViTSmall
 
-
 # registry mapping model names to classes
 MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
     "simplecnn": SimpleCNN,
@@ -34,7 +33,7 @@ def get_model(
     **kwargs: Any,
 ) -> nn.Module:
     """Create a model by name.
-    
+
     Args:
         model_name: name of the model (must be in MODEL_REGISTRY)
         num_classes: number of output classes
@@ -42,24 +41,24 @@ def get_model(
         image_size: input image size
         pretrained: whether to use pretrained weights
         **kwargs: additional model-specific arguments
-    
+
     Returns:
         Initialized model
-    
+
     Raises:
         ValueError: if model_name is not in registry
     """
     model_name = model_name.lower()
-    
+
     if model_name not in MODEL_REGISTRY:
         available = ", ".join(MODEL_REGISTRY.keys())
         raise ValueError(f"Unknown model: {model_name}. Available: {available}")
-    
+
     model_class = MODEL_REGISTRY[model_name]
-    
+
     # build kwargs based on model type
     model_kwargs = {"num_classes": num_classes}
-    
+
     if model_name in ["simplecnn"]:
         model_kwargs["in_channels"] = in_channels
     elif model_name in ["simplecnn_large"]:
@@ -84,12 +83,12 @@ def get_model(
         for key in ["patch_size", "embed_dim", "depth", "num_heads"]:
             if key in kwargs:
                 model_kwargs[key] = kwargs[key]
-    
+
     # add any remaining kwargs
     for key, value in kwargs.items():
         if key not in model_kwargs:
             model_kwargs[key] = value
-    
+
     return model_class(**model_kwargs)
 
 
@@ -98,11 +97,11 @@ def get_model_from_config(
     dataset_cfg: DictConfig,
 ) -> nn.Module:
     """Create a model from Hydra config.
-    
+
     Args:
         model_cfg: model configuration from Hydra
         dataset_cfg: dataset configuration (for num_classes, image_size)
-    
+
     Returns:
         Initialized model
     """
@@ -114,4 +113,3 @@ def get_model_from_config(
         pretrained=model_cfg.get("pretrained", False),
         **{k: v for k, v in model_cfg.items() if k not in ["name", "_target_", "pretrained"]},
     )
-

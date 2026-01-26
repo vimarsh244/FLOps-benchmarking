@@ -109,7 +109,10 @@ def load_subset_data(
 
         for img, label in zip(images, labels):
             label_int = int(label.item())
-            if label_int in subset_distribution and current_counts[label_int] < subset_distribution[label_int]:
+            if (
+                label_int in subset_distribution
+                and current_counts[label_int] < subset_distribution[label_int]
+            ):
                 collected_inputs.append(img)
                 collected_labels.append(label)
                 current_counts[label_int] += 1

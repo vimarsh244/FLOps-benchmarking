@@ -68,12 +68,8 @@ class DIWSFHE(Strategy):
     def __repr__(self) -> str:
         return repr(self.aggregator_strategy)
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
-        self.global_parameters = self.aggregator_strategy.initialize_parameters(
-            client_manager
-        )
+    def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
+        self.global_parameters = self.aggregator_strategy.initialize_parameters(client_manager)
         if not self.ts:
             self.ts = get_tenseal()
         if self.context is None:
@@ -102,16 +98,12 @@ class DIWSFHE(Strategy):
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, FitIns]]:
         self.global_parameters = parameters
-        return self.aggregator_strategy.configure_fit(
-            server_round, parameters, client_manager
-        )
+        return self.aggregator_strategy.configure_fit(server_round, parameters, client_manager)
 
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, EvaluateIns]]:
-        return self.aggregator_strategy.configure_evaluate(
-            server_round, parameters, client_manager
-        )
+        return self.aggregator_strategy.configure_evaluate(server_round, parameters, client_manager)
 
     def aggregate_fit(
         self,
@@ -140,9 +132,7 @@ class DIWSFHE(Strategy):
             for client_proxy, fit_res in results:
                 if not fit_res.metrics or "label_distribution" not in fit_res.metrics:
                     continue
-                client_dist_bytes = pickle.loads(
-                    fit_res.metrics.get("label_distribution")
-                )
+                client_dist_bytes = pickle.loads(fit_res.metrics.get("label_distribution"))
                 client_dist = {
                     label: self.ts.ckks_vector_from(self.context, enc_bytes)
                     for label, enc_bytes in client_dist_bytes.items()
@@ -156,9 +146,7 @@ class DIWSFHE(Strategy):
                     self.label_distribution[client_proxy.cid] = client_dist
 
         if dropped_cids:
-            dropped_pids = [
-                str(self.cid_to_partition.get(cid, cid)) for cid in dropped_cids
-            ]
+            dropped_pids = [str(self.cid_to_partition.get(cid, cid)) for cid in dropped_cids]
             self.substitute_dropped_clients(
                 server_round=server_round,
                 results=results,
@@ -178,9 +166,7 @@ class DIWSFHE(Strategy):
         results: List[Tuple[ClientProxy, EvaluateRes]],
         failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
     ) -> Tuple[Optional[float], Dict[str, Scalar]]:
-        return self.aggregator_strategy.aggregate_evaluate(
-            server_round, results, failures
-        )
+        return self.aggregator_strategy.aggregate_evaluate(server_round, results, failures)
 
     def substitute_dropped_clients(
         self,
@@ -195,9 +181,7 @@ class DIWSFHE(Strategy):
         if not active_client_proxies:
             return
         active_cids = [p.cid for p in active_client_proxies]
-        active_pids = [
-            str(self.cid_to_partition.get(cid, cid)) for cid in active_cids
-        ]
+        active_pids = [str(self.cid_to_partition.get(cid, cid)) for cid in active_cids]
         actual_dropped = [pid for pid in dropped_partitions if pid not in active_pids]
         if not actual_dropped:
             return
@@ -272,11 +256,7 @@ class DIWSFHE(Strategy):
 
             if res and res.metrics:
                 feasibility_metrics.append(
-                    {
-                        k: v
-                        for k, v in res.metrics.items()
-                        if isinstance(v, (int, float))
-                    }
+                    {k: v for k, v in res.metrics.items() if isinstance(v, (int, float))}
                 )
                 self._log_client_metrics(helper_proxy.cid, res.metrics, server_round)
 
@@ -295,9 +275,7 @@ class DIWSFHE(Strategy):
 
         final_k = k_min
         k_final_enc = self.ts.ckks_vector(self.context, [final_k])
-        scaled_dropped_demand = {
-            label: val * k_final_enc for label, val in dropped_demand.items()
-        }
+        scaled_dropped_demand = {label: val * k_final_enc for label, val in dropped_demand.items()}
         dropped_demand = scaled_dropped_demand
 
         final_shares: Dict[str, Dict[int, object]] = {cid: {} for cid in active_cids}
@@ -368,11 +346,7 @@ class DIWSFHE(Strategy):
                         continue
                     if res.metrics:
                         iteration_metrics.append(
-                            {
-                                k: v
-                                for k, v in res.metrics.items()
-                                if isinstance(v, (int, float))
-                            }
+                            {k: v for k, v in res.metrics.items() if isinstance(v, (int, float))}
                         )
                         self._log_client_metrics(cid, res.metrics, server_round)
                     is_capped_map = pickle.loads(res.metrics.get("is_capped", pickle.dumps({})))
@@ -497,8 +471,6 @@ class DIWSFHE(Strategy):
 
     @staticmethod
     def _log_client_metrics(client_id: str, metrics: Dict[str, Scalar], step: int) -> None:
-        numeric = {
-            k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))
-        }
+        numeric = {k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
         if numeric:
             log_metrics(numeric, step=step, prefix=f"client/{client_id}")

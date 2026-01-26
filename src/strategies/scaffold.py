@@ -43,7 +43,6 @@ from src.strategies.base import (
 )
 from src.utils.wandb_logger import log_round_metrics
 
-
 WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW = """
 Setting `min_available_clients` lower than `min_fit_clients` or
 `min_evaluate_clients` can cause the server to fail when there are too few clients
@@ -102,10 +101,7 @@ class SCAFFOLD(Strategy):
     ) -> None:
         super().__init__()
 
-        if (
-            min_fit_clients > min_available_clients
-            or min_evaluate_clients > min_available_clients
-        ):
+        if min_fit_clients > min_available_clients or min_evaluate_clients > min_available_clients:
             log(WARNING, WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW)
 
         self.fraction_fit = fraction_fit
@@ -125,10 +121,10 @@ class SCAFFOLD(Strategy):
         self.server_lr = server_lr
         self.client_lr = client_lr
         self.warm_start = warm_start
-        
+
         # full model state (includes both trainable params and buffers)
         self._global_model: Optional[NDArrays] = None
-        
+
         # control variates - ONLY for trainable parameters
         # these have a DIFFERENT size than _global_model if there are buffers
         self._num_trainable: Optional[int] = None
@@ -148,7 +144,7 @@ class SCAFFOLD(Strategy):
 
     def _init_control_variates(self, num_trainable: int, template: NDArrays) -> None:
         """Initialize control variates for trainable parameters only.
-        
+
         Args:
             num_trainable: Number of trainable parameter tensors
             template: Template arrays to get shapes (first num_trainable items)
@@ -158,9 +154,7 @@ class SCAFFOLD(Strategy):
         trainable_template = template[:num_trainable]
         self._server_control = [np.zeros_like(w, dtype=np.float32) for w in trainable_template]
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
+    def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
         """Initialize global model parameters."""
         initial_parameters = self.initial_parameters
         self.initial_parameters = None
@@ -173,7 +167,9 @@ class SCAFFOLD(Strategy):
     def _get_client_control(self, cid: str) -> NDArrays:
         """Get control variate for a client, initializing if needed."""
         if cid not in self._client_controls and self._server_control is not None:
-            self._client_controls[cid] = [np.zeros_like(w, dtype=np.float32) for w in self._server_control]
+            self._client_controls[cid] = [
+                np.zeros_like(w, dtype=np.float32) for w in self._server_control
+            ]
         return self._client_controls.get(cid, [])
 
     def configure_fit(
@@ -190,18 +186,14 @@ class SCAFFOLD(Strategy):
         config["client_lr"] = self.client_lr
 
         # sample clients
-        sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         # create fit instructions with control variates
         fit_instructions = []
         for client in clients:
             cid = getattr(client, "cid", None) or str(client)
-            
+
             # on first round (before we know trainable count), just send model
             # control variates will be initialized to zero by clients
             if self._server_control is None:
@@ -213,11 +205,13 @@ class SCAFFOLD(Strategy):
             else:
                 # subsequent rounds: send model + control variates
                 client_control = self._get_client_control(cid)
-                packed = list(self._global_model) + list(self._server_control) + list(client_control)
+                packed = (
+                    list(self._global_model) + list(self._server_control) + list(client_control)
+                )
                 config["num_trainable"] = len(self._server_control)
                 config["num_full_state"] = len(self._global_model)
                 config["first_round"] = 0
-            
+
             fit_ins = FitIns(ndarrays_to_parameters(packed), config)
             fit_instructions.append((client, fit_ins))
 
@@ -238,16 +232,10 @@ class SCAFFOLD(Strategy):
             config = self.on_evaluate_config_fn(server_round)
         config["current_round"] = server_round
 
-        evaluate_ins = EvaluateIns(
-            ndarrays_to_parameters(self._global_model), config
-        )
+        evaluate_ins = EvaluateIns(ndarrays_to_parameters(self._global_model), config)
 
-        sample_size, min_num_clients = self.num_evaluation_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_evaluation_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         return [(client, evaluate_ins) for client in clients]
 
@@ -265,10 +253,11 @@ class SCAFFOLD(Strategy):
 
         # filter out disconnected clients (those with num_examples=0 or empty parameters)
         valid_results = [
-            (client, res) for client, res in results
+            (client, res)
+            for client, res in results
             if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
         ]
-        
+
         if not valid_results:
             return None, {}
 
@@ -276,26 +265,40 @@ class SCAFFOLD(Strategy):
         first_metrics = valid_results[0][1].metrics
         num_full_state = int(first_metrics.get("num_full_state", len(self._global_model)))
         num_trainable = int(first_metrics.get("num_trainable", num_full_state))
-        
+
         # first round: initialize control variates now that we know the correct size
         if self._server_control is None:
-            log(INFO, f"SCAFFOLD: Initializing control variates for {num_trainable} trainable params (first round)")
+            log(
+                INFO,
+                f"SCAFFOLD: Initializing control variates for {num_trainable} trainable params (first round)",
+            )
             self._num_trainable = num_trainable
-            
+
             # get template shapes from client's returned control variates
             # unpack one client's result to get correct shapes
             first_params = parameters_to_ndarrays(valid_results[0][1].parameters)
             # structure: [full_model, new_client_control, delta_control]
-            new_client_control_sample = first_params[num_full_state:num_full_state + num_trainable]
-            
-            self._server_control = [np.zeros_like(w, dtype=np.float32) for w in new_client_control_sample]
+            new_client_control_sample = first_params[
+                num_full_state : num_full_state + num_trainable
+            ]
+
+            self._server_control = [
+                np.zeros_like(w, dtype=np.float32) for w in new_client_control_sample
+            ]
             self._client_controls = {}
         elif len(self._server_control) != num_trainable:
-            log(INFO, f"SCAFFOLD: Reinitializing control variates for {num_trainable} trainable params")
+            log(
+                INFO,
+                f"SCAFFOLD: Reinitializing control variates for {num_trainable} trainable params",
+            )
             self._num_trainable = num_trainable
             first_params = parameters_to_ndarrays(valid_results[0][1].parameters)
-            new_client_control_sample = first_params[num_full_state:num_full_state + num_trainable]
-            self._server_control = [np.zeros_like(w, dtype=np.float32) for w in new_client_control_sample]
+            new_client_control_sample = first_params[
+                num_full_state : num_full_state + num_trainable
+            ]
+            self._server_control = [
+                np.zeros_like(w, dtype=np.float32) for w in new_client_control_sample
+            ]
             self._client_controls = {}
 
         # collect model updates and control variate updates
@@ -305,18 +308,20 @@ class SCAFFOLD(Strategy):
         for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             all_params = parameters_to_ndarrays(fit_res.parameters)
-            
+
             # unpack: [full_model..., new_client_control..., delta_control...]
             # control variates are for trainable params only
             new_model = all_params[:num_full_state]
-            new_client_control = all_params[num_full_state:num_full_state + num_trainable]
-            delta_control = all_params[num_full_state + num_trainable:num_full_state + 2*num_trainable]
-            
+            new_client_control = all_params[num_full_state : num_full_state + num_trainable]
+            delta_control = all_params[
+                num_full_state + num_trainable : num_full_state + 2 * num_trainable
+            ]
+
             # compute model update for full state
             delta_y = compute_update(new_model, self._global_model)
             model_updates.append((delta_y, fit_res.num_examples))
             control_updates.append(delta_control)
-            
+
             # update client control (trainable only)
             self._client_controls[cid] = new_client_control
 

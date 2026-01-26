@@ -13,6 +13,7 @@ import torch
 
 try:
     import psutil
+
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
@@ -46,7 +47,7 @@ class FheDiwsClient(FlowerClient):
         proc = psutil.Process(os.getpid())
         cpu_times = proc.cpu_times()
         cpu_total = cpu_times.user + cpu_times.system
-        mem_rss_mb = proc.memory_info().rss / (1024 ** 2)
+        mem_rss_mb = proc.memory_info().rss / (1024**2)
         return cpu_total, mem_rss_mb
 
     def _start_resource_timer(self):
@@ -150,9 +151,7 @@ class FheDiwsClient(FlowerClient):
             metrics["partition_id"] = str(self.partition_id)
             metrics["label_dist_items"] = int(len(label_distribution))
             metrics["label_dist_total"] = int(sum(label_distribution.values()))
-            metrics["fhe_label_dist_bytes"] = int(
-                sum(len(v) for v in encrypted_dist.values())
-            )
+            metrics["fhe_label_dist_bytes"] = int(sum(len(v) for v in encrypted_dist.values()))
 
         return params, num_examples, metrics
 

@@ -7,8 +7,7 @@ from src.monitoring.collector import MetricsCollector
 
 __all__ = [
     "SystemMonitor",
-    "GPUMonitor", 
+    "GPUMonitor",
     "PowerMonitor",
     "MetricsCollector",
 ]
-

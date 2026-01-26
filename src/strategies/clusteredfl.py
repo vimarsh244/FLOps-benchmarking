@@ -1,6 +1,6 @@
 """Clustered Federated Learning strategy implementation.
 
-Based on: Clustered Federated Learning: Model-Agnostic Distributed Multi-Task 
+Based on: Clustered Federated Learning: Model-Agnostic Distributed Multi-Task
           Optimization under Privacy Constraints
           Sattler et al., 2019
           https://arxiv.org/abs/1910.01991
@@ -35,7 +35,6 @@ from flwr.server.strategy.strategy import Strategy
 
 from src.strategies.base import weighted_average
 from src.utils.wandb_logger import log_round_metrics
-
 
 WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW = """
 Setting `min_available_clients` lower than `min_fit_clients` or
@@ -109,10 +108,7 @@ class CustomClusteredFL(Strategy):
     ) -> None:
         super().__init__()
 
-        if (
-            min_fit_clients > min_available_clients
-            or min_evaluate_clients > min_available_clients
-        ):
+        if min_fit_clients > min_available_clients or min_evaluate_clients > min_available_clients:
             log(WARNING, WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW)
 
         self.fraction_fit = fraction_fit
@@ -157,9 +153,7 @@ class CustomClusteredFL(Strategy):
         num_clients = int(num_available_clients * self.fraction_evaluate)
         return max(num_clients, self.min_evaluate_clients), self.min_available_clients
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
+    def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
         """Initialize the first cluster with the provided initial parameters."""
         initial_parameters = self.initial_parameters
         self.initial_parameters = None
@@ -195,17 +189,13 @@ class CustomClusteredFL(Strategy):
             self._next_cluster_id = 1
 
         # sample clients
-        sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         # assign per-client cluster and send that cluster's model
         round_assignments: Dict[str, int] = {}
         fit_instructions: List[Tuple[ClientProxy, FitIns]] = []
-        
+
         for client in clients:
             cid = getattr(client, "cid", None) or str(client)
             cluster_id = self._select_initial_cluster_for(cid)
@@ -235,19 +225,13 @@ class CustomClusteredFL(Strategy):
             self._cluster_models[0] = parameters_to_ndarrays(parameters)
             self._next_cluster_id = 1
 
-        sample_size, min_num_clients = self.num_evaluation_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_evaluation_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         eval_instructions: List[Tuple[ClientProxy, EvaluateIns]] = []
         for client in clients:
             cid = getattr(client, "cid", None) or str(client)
-            cluster_id = self._client_to_cluster.get(
-                cid, self._select_initial_cluster_for(cid)
-            )
+            cluster_id = self._client_to_cluster.get(cid, self._select_initial_cluster_for(cid))
             params = ndarrays_to_parameters(self._cluster_models[cluster_id])
             cfg = {**config, "cluster_id": cluster_id}
             eval_instructions.append((client, EvaluateIns(params, cfg)))
@@ -255,9 +239,7 @@ class CustomClusteredFL(Strategy):
         return eval_instructions
 
     @staticmethod
-    def _weighted_aggregate(
-        results: List[Tuple[NDArrays, int]], inplace: bool = True
-    ) -> NDArrays:
+    def _weighted_aggregate(results: List[Tuple[NDArrays, int]], inplace: bool = True) -> NDArrays:
         """Compute weighted average of model parameters."""
         if not results:
             raise ValueError("No results to aggregate")
@@ -291,35 +273,35 @@ class CustomClusteredFL(Strategy):
         update_vectors: List[np.ndarray],
     ) -> Tuple[float, float]:
         """Compute pairwise cosine similarities between update vectors.
-        
+
         As per Sattler et al. paper, we compute cosine similarity between
         client gradient updates to determine if they should be in the same cluster.
-        
+
         Args:
             update_vectors: List of flattened update vectors
-        
+
         Returns:
             Tuple of (mean_cosine_similarity, min_cosine_similarity)
         """
         if len(update_vectors) < 2:
             return 1.0, 1.0
-        
+
         eps = 1e-12
-        
+
         # normalize vectors
         norms = [np.linalg.norm(v) + eps for v in update_vectors]
         normalized = [v / n for v, n in zip(update_vectors, norms)]
-        
+
         # compute pairwise cosine similarities
         similarities = []
         for i in range(len(normalized)):
             for j in range(i + 1, len(normalized)):
                 sim = float(np.dot(normalized[i], normalized[j]))
                 similarities.append(sim)
-        
+
         if not similarities:
             return 1.0, 1.0
-        
+
         return float(np.mean(similarities)), float(np.min(similarities))
 
     def _binary_spherical_kmeans(self, X: np.ndarray) -> np.ndarray:
@@ -374,10 +356,11 @@ class CustomClusteredFL(Strategy):
 
         # filter out disconnected clients (those with num_examples=0 or empty parameters)
         valid_results = [
-            (client, res) for client, res in results
+            (client, res)
+            for client, res in results
             if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
         ]
-        
+
         if not valid_results:
             return None, {}
 
@@ -410,21 +393,23 @@ class CustomClusteredFL(Strategy):
             if len(upd_vecs) >= self.min_clients_for_split:
                 # compute pairwise cosine similarities (as per Sattler et al. paper)
                 mean_cosine, min_cosine = self._compute_cosine_similarities(upd_vecs)
-                
+
                 # split if cosine similarity indicates divergence among clients
                 should_split = (
                     server_round >= self.split_warmup_rounds
                     and server_round - self._last_split_round >= self.split_cooldown_rounds
-                    and (mean_cosine < self.cosine_sim_threshold or min_cosine < self.min_cosine_sim)
+                    and (
+                        mean_cosine < self.cosine_sim_threshold or min_cosine < self.min_cosine_sim
+                    )
                 )
-                
+
                 if should_split:
                     split_candidates.append(cid_cluster)
 
                 log(
                     INFO,
                     f"[CFL] Round {server_round} cluster {cid_cluster}: "
-                    f"mean_cosine={mean_cosine:.4f}, min_cosine={min_cosine:.4f}"
+                    f"mean_cosine={mean_cosine:.4f}, min_cosine={min_cosine:.4f}",
                 )
 
         # apply at most one split per round
@@ -465,7 +450,7 @@ class CustomClusteredFL(Strategy):
                 log(
                     INFO,
                     f"[CFL] Split cluster {cid_cluster} -> {cid_cluster} & {new_cluster_id} "
-                    f"at round {server_round}"
+                    f"at round {server_round}",
                 )
 
         # update cluster models without split
@@ -546,4 +531,3 @@ class CustomClusteredFL(Strategy):
         log_round_metrics(server_round, evaluate_metrics=metrics_aggregated, loss=loss_aggregated)
 
         return loss_aggregated, metrics_aggregated
-
