@@ -13,6 +13,7 @@ from src.scenarios.base import BaseScenario
 @dataclass
 class DropEvent:
     """Represents a node drop event."""
+
     client_ids: Set[int]
     disconnect_round: int
     rejoin_round: int
@@ -20,9 +21,9 @@ class DropEvent:
 
 class NodeDropScenario(BaseScenario):
     """Scenario that simulates node disconnection and rejoining.
-    
+
     Can be configured with explicit drop events or auto-mode based on partition ID.
-    
+
     Configuration:
         drop_events: list of {client_ids, disconnect_round, rejoin_round}
         auto_mode:
@@ -39,7 +40,7 @@ class NodeDropScenario(BaseScenario):
         self.auto_start_partition = 2
         self.auto_disconnect_offset = 3
         self.auto_rejoin_round = 31
-        
+
         if self.enabled and config:
             self._parse_config(config)
 
@@ -49,12 +50,14 @@ class NodeDropScenario(BaseScenario):
         if "drop_events" in config:
             for event in config.drop_events:
                 client_ids = set(event.get("client_ids", []))
-                self.drop_events.append(DropEvent(
-                    client_ids=client_ids,
-                    disconnect_round=event.get("disconnect_round", 5),
-                    rejoin_round=event.get("rejoin_round", 31),
-                ))
-        
+                self.drop_events.append(
+                    DropEvent(
+                        client_ids=client_ids,
+                        disconnect_round=event.get("disconnect_round", 5),
+                        rejoin_round=event.get("rejoin_round", 31),
+                    )
+                )
+
         # parse auto mode
         if "auto_mode" in config and config.auto_mode.get("enabled", False):
             self.auto_mode_enabled = True
@@ -74,32 +77,31 @@ class NodeDropScenario(BaseScenario):
         """Check if client is dropped based on auto mode."""
         if not self.auto_mode_enabled:
             return False
-        
+
         if client_id < self.auto_start_partition:
             return False
-        
+
         # disconnect round = partition_id + offset
         disconnect_round = client_id + self.auto_disconnect_offset
         rejoin_round = self.auto_rejoin_round
-        
+
         return disconnect_round <= current_round < rejoin_round
 
     def is_client_dropped(self, client_id: int, current_round: int) -> bool:
         """Check if a client is currently dropped.
-        
+
         Args:
             client_id: Client partition ID
             current_round: Current training round
-        
+
         Returns:
             True if client is dropped (disconnected), False otherwise
         """
         if not self.enabled:
             return False
-        
-        return (
-            self._is_dropped_explicit(client_id, current_round)
-            or self._is_dropped_auto(client_id, current_round)
+
+        return self._is_dropped_explicit(client_id, current_round) or self._is_dropped_auto(
+            client_id, current_round
         )
 
     def should_client_participate(
@@ -113,10 +115,10 @@ class NodeDropScenario(BaseScenario):
 
     def get_drop_info(self, client_id: int) -> Dict[str, Any]:
         """Get drop information for a client.
-        
+
         Args:
             client_id: Client partition ID
-        
+
         Returns:
             Dictionary with disconnect_round, rejoin_round if applicable
         """
@@ -128,7 +130,7 @@ class NodeDropScenario(BaseScenario):
                     "disconnect_round": event.disconnect_round,
                     "rejoin_round": event.rejoin_round,
                 }
-        
+
         # check auto mode
         if self.auto_mode_enabled and client_id >= self.auto_start_partition:
             disconnect_round = client_id + self.auto_disconnect_offset
@@ -137,16 +139,16 @@ class NodeDropScenario(BaseScenario):
                 "disconnect_round": disconnect_round,
                 "rejoin_round": self.auto_rejoin_round,
             }
-        
+
         return {"will_drop": False}
 
     def get_dropped_clients_for_round(self, current_round: int, num_clients: int) -> Set[int]:
         """Get set of dropped client IDs for a given round.
-        
+
         Args:
             current_round: Current training round
             num_clients: Total number of clients
-        
+
         Returns:
             Set of client IDs that are dropped in this round
         """
@@ -159,12 +161,11 @@ class NodeDropScenario(BaseScenario):
     def __repr__(self) -> str:
         if not self.enabled:
             return "NodeDropScenario(enabled=False)"
-        
+
         info = []
         if self.drop_events:
             info.append(f"events={len(self.drop_events)}")
         if self.auto_mode_enabled:
             info.append(f"auto_mode=True")
-        
-        return f"NodeDropScenario({', '.join(info)})"
 
+        return f"NodeDropScenario({', '.join(info)})"

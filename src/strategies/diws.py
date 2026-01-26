@@ -45,12 +45,8 @@ class DIWS(Strategy):
     def __repr__(self) -> str:
         return repr(self.aggregator_strategy)
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
-        self.global_parameters = self.aggregator_strategy.initialize_parameters(
-            client_manager
-        )
+    def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
+        self.global_parameters = self.aggregator_strategy.initialize_parameters(client_manager)
         return self.global_parameters
 
     def evaluate(
@@ -62,16 +58,12 @@ class DIWS(Strategy):
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, FitIns]]:
         self.global_parameters = parameters
-        return self.aggregator_strategy.configure_fit(
-            server_round, parameters, client_manager
-        )
+        return self.aggregator_strategy.configure_fit(server_round, parameters, client_manager)
 
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, EvaluateIns]]:
-        return self.aggregator_strategy.configure_evaluate(
-            server_round, parameters, client_manager
-        )
+        return self.aggregator_strategy.configure_evaluate(server_round, parameters, client_manager)
 
     def aggregate_fit(
         self,
@@ -84,9 +76,7 @@ class DIWS(Strategy):
             for client_proxy, fitres in results:
                 if not fitres.metrics or "label_distribution" not in fitres.metrics:
                     continue
-                client_label_distribution = pickle.loads(
-                    fitres.metrics.get("label_distribution")
-                )
+                client_label_distribution = pickle.loads(fitres.metrics.get("label_distribution"))
                 self.label_distribution[client_proxy.cid] = client_label_distribution
 
         print(f"Number of results before substitution: {len(results)}")
@@ -101,9 +91,7 @@ class DIWS(Strategy):
         results: List[Tuple[ClientProxy, EvaluateRes]],
         failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
     ) -> Tuple[Optional[float], Dict[str, Scalar]]:
-        aggregated = self.aggregator_strategy.aggregate_evaluate(
-            server_round, results, failures
-        )
+        aggregated = self.aggregator_strategy.aggregate_evaluate(server_round, results, failures)
         print(f"Results of aggregate evaluate: {aggregated}")
         return aggregated
 
@@ -123,9 +111,7 @@ class DIWS(Strategy):
             active_client_ids
         )
         if not client_subset_distributions:
-            print(
-                f"No subset distributions available for round {server_round}; skipping."
-            )
+            print(f"No subset distributions available for round {server_round}; skipping.")
             return
 
         with ThreadPoolExecutor() as executor:
@@ -155,9 +141,7 @@ class DIWS(Strategy):
     def consolidate_label_distributions(
         self, active_clients_ids: List[str]
     ) -> Tuple[Dict[int, int], Dict[int, int]]:
-        dropped_clients_ids = set(self.label_distribution.keys()) - set(
-            active_clients_ids
-        )
+        dropped_clients_ids = set(self.label_distribution.keys()) - set(active_clients_ids)
         print(f"Dropped clients IDs: {dropped_clients_ids}")
         print(f"Active clients IDs: {active_clients_ids}")
 
@@ -193,8 +177,7 @@ class DIWS(Strategy):
             return representative_subset_distribution
 
         target_percentages = {
-            label: count / total_dropped
-            for label, count in dropped_clients_distribution.items()
+            label: count / total_dropped for label, count in dropped_clients_distribution.items()
         }
 
         anchor_label = max(
@@ -208,8 +191,7 @@ class DIWS(Strategy):
         )
 
         anchor_label_total = floor(
-            representative_subset_distribution[anchor_label]
-            / target_percentages[anchor_label]
+            representative_subset_distribution[anchor_label] / target_percentages[anchor_label]
         )
 
         for label, count in active_clients_distribution.items():
@@ -218,9 +200,7 @@ class DIWS(Strategy):
             target_count = floor(target_percentages[label] * anchor_label_total)
             representative_subset_distribution[label] = min(target_count, count)
 
-        print(
-            f"Subset distribution for active clients: {representative_subset_distribution}"
-        )
+        print(f"Subset distribution for active clients: {representative_subset_distribution}")
         return representative_subset_distribution
 
     def get_subset_distribution_for_active_clients(
@@ -231,10 +211,8 @@ class DIWS(Strategy):
             self.consolidate_label_distributions(active_clients_ids)
         )
 
-        representative_subset_distribution = (
-            self.get_consolidated_representative_distribution(
-                dropped_clients_distribution, active_clients_distribution
-            )
+        representative_subset_distribution = self.get_consolidated_representative_distribution(
+            dropped_clients_distribution, active_clients_distribution
         )
         if not representative_subset_distribution:
             return {cid: {} for cid in active_clients_ids}

@@ -7,14 +7,14 @@ from omegaconf import DictConfig
 
 class BaseScenario(ABC):
     """Base class for scenario handlers.
-    
+
     Scenarios define special behaviors during federated learning,
     such as node disconnections, timeouts, or custom client selection.
     """
 
     def __init__(self, config: Optional[DictConfig] = None):
         """Initialize scenario.
-        
+
         Args:
             config: Hydra configuration for the scenario
         """
@@ -29,12 +29,12 @@ class BaseScenario(ABC):
         **kwargs: Any,
     ) -> bool:
         """Determine if a client should participate in the current round.
-        
+
         Args:
             client_id: ID of the client (partition_id)
             current_round: Current training round
             **kwargs: Additional context
-        
+
         Returns:
             True if client should participate, False otherwise
         """
@@ -47,12 +47,12 @@ class BaseScenario(ABC):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Get additional configuration for a client.
-        
+
         Args:
             client_id: ID of the client
             current_round: Current training round
             **kwargs: Additional context
-        
+
         Returns:
             Dictionary of configuration values to pass to client
         """
@@ -60,7 +60,7 @@ class BaseScenario(ABC):
 
     def on_round_start(self, current_round: int, **kwargs: Any) -> None:
         """Called at the start of each round.
-        
+
         Args:
             current_round: Current training round
             **kwargs: Additional context
@@ -69,7 +69,7 @@ class BaseScenario(ABC):
 
     def on_round_end(self, current_round: int, **kwargs: Any) -> None:
         """Called at the end of each round.
-        
+
         Args:
             current_round: Current training round
             **kwargs: Additional context
@@ -82,7 +82,7 @@ class BaseScenario(ABC):
 
 class NoOpScenario(BaseScenario):
     """No-op scenario that allows all clients to participate.
-    
+
     Used for baseline experiments with no special behavior.
     """
 
@@ -94,4 +94,3 @@ class NoOpScenario(BaseScenario):
     ) -> bool:
         """Always returns True - all clients participate."""
         return True
-

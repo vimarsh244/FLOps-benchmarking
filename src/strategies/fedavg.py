@@ -29,7 +29,6 @@ from flwr.server.strategy.strategy import Strategy
 from src.strategies.base import weighted_average, aggregate_parameters, get_parameters_from_results
 from src.utils.wandb_logger import log_round_metrics
 
-
 WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW = """
 Setting `min_available_clients` lower than `min_fit_clients` or
 `min_evaluate_clients` can cause the server to fail when there are too few clients
@@ -97,10 +96,7 @@ class CustomFedAvg(Strategy):
     ) -> None:
         super().__init__()
 
-        if (
-            min_fit_clients > min_available_clients
-            or min_evaluate_clients > min_available_clients
-        ):
+        if min_fit_clients > min_available_clients or min_evaluate_clients > min_available_clients:
             log(WARNING, WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW)
 
         self.fraction_fit = fraction_fit
@@ -130,9 +126,7 @@ class CustomFedAvg(Strategy):
         num_clients = int(num_available_clients * self.fraction_evaluate)
         return max(num_clients, self.min_evaluate_clients), self.min_available_clients
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
+    def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
         """Initialize global model parameters."""
         initial_parameters = self.initial_parameters
         self.initial_parameters = None  # don't keep in memory
@@ -162,12 +156,8 @@ class CustomFedAvg(Strategy):
         fit_ins = FitIns(parameters, config)
 
         # sample clients
-        sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         return [(client, fit_ins) for client in clients]
 
@@ -185,12 +175,8 @@ class CustomFedAvg(Strategy):
         evaluate_ins = EvaluateIns(parameters, config)
 
         # sample clients
-        sample_size, min_num_clients = self.num_evaluation_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_evaluation_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         return [(client, evaluate_ins) for client in clients]
 
@@ -208,18 +194,21 @@ class CustomFedAvg(Strategy):
 
         # filter out disconnected clients (those with num_examples=0 or empty parameters)
         valid_results = [
-            (client, res) for client, res in results
+            (client, res)
+            for client, res in results
             if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
         ]
-        
+
         # log aggregation info
         dropped_count = len(results) - len(valid_results)
         if dropped_count > 0:
-            print(f"[FedAvg] Round {server_round}: Received {len(results)} results, {len(valid_results)} valid, {dropped_count} dropped")
-        
+            print(
+                f"[FedAvg] Round {server_round}: Received {len(results)} results, {len(valid_results)} valid, {dropped_count} dropped"
+            )
+
         if not valid_results:
             return None, {}
-        
+
         if self.inplace:
             aggregated_ndarrays = aggregate_inplace(valid_results)
         else:
@@ -253,10 +242,7 @@ class CustomFedAvg(Strategy):
             return None, {}
 
         loss_aggregated = weighted_loss_avg(
-            [
-                (evaluate_res.num_examples, evaluate_res.loss)
-                for _, evaluate_res in results
-            ]
+            [(evaluate_res.num_examples, evaluate_res.loss) for _, evaluate_res in results]
         )
 
         # aggregate custom metrics
@@ -269,4 +255,3 @@ class CustomFedAvg(Strategy):
         log_round_metrics(server_round, evaluate_metrics=metrics_aggregated, loss=loss_aggregated)
 
         return loss_aggregated, metrics_aggregated
-

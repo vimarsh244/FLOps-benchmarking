@@ -15,4 +15,3 @@ __all__ = [
     "get_model",
     "MODEL_REGISTRY",
 ]
-

@@ -38,7 +38,6 @@ from src.strategies.base import (
 )
 from src.utils.wandb_logger import log_round_metrics
 
-
 WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW = """
 Setting `min_available_clients` lower than `min_fit_clients` or
 `min_evaluate_clients` can cause the server to fail when there are too few clients
@@ -106,10 +105,7 @@ class CustomMIFA(Strategy):
     ) -> None:
         super().__init__()
 
-        if (
-            min_fit_clients > min_available_clients
-            or min_evaluate_clients > min_available_clients
-        ):
+        if min_fit_clients > min_available_clients or min_evaluate_clients > min_available_clients:
             log(WARNING, WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW)
 
         self.fraction_fit = fraction_fit
@@ -149,9 +145,7 @@ class CustomMIFA(Strategy):
         num_clients = int(num_available_clients * self.fraction_evaluate)
         return max(num_clients, self.min_evaluate_clients), self.min_available_clients
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
+    def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
         """Initialize global model parameters."""
         initial_parameters = self.initial_parameters
         self.initial_parameters = None
@@ -161,11 +155,11 @@ class CustomMIFA(Strategy):
 
     def _normalization_factor(self, num_samples: int = 0) -> float:
         """Get the normalization factor for client updates: K * eta_local.
-        
+
         Args:
             num_samples: Number of samples the client trained on.
                         Used to estimate actual gradient steps.
-        
+
         The number of gradient steps K = local_epochs * ceil(num_samples / batch_size).
         If local_steps is explicitly set > 1, use that instead.
         """
@@ -179,7 +173,7 @@ class CustomMIFA(Strategy):
         else:
             # fallback to 1 epoch worth of steps
             actual_steps = max(1, self._local_steps)
-        
+
         return float(actual_steps) * self._client_lr
 
     def configure_fit(
@@ -203,12 +197,8 @@ class CustomMIFA(Strategy):
         config["current_round"] = server_round
 
         # sample clients
-        sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         fit_ins = FitIns(ndarrays_to_parameters(self._latest_global), config)
         return [(client, fit_ins) for client in clients]
@@ -229,12 +219,8 @@ class CustomMIFA(Strategy):
 
         evaluate_ins = EvaluateIns(ndarrays_to_parameters(self._latest_global), config)
 
-        sample_size, min_num_clients = self.num_evaluation_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_evaluation_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
         return [(client, evaluate_ins) for client in clients]
 
     def _ensure_table_entries(self) -> None:
@@ -257,10 +243,11 @@ class CustomMIFA(Strategy):
 
         # filter out disconnected clients (those with num_examples=0 or empty parameters)
         valid_results = [
-            (client, res) for client, res in results
+            (client, res)
+            for client, res in results
             if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
         ]
-        
+
         if not valid_results:
             # return current global if no valid results
             if self._latest_global is not None:
@@ -284,14 +271,15 @@ class CustomMIFA(Strategy):
         for client, fit_res in valid_results:
             cid = getattr(client, "cid", None) or str(client)
             w_i = parameters_to_ndarrays(fit_res.parameters)
-            
+
             # compute normalization factor based on this client's training
             num_samples = fit_res.num_examples
             norm_factor = self._normalization_factor(num_samples)
-            
+
             # U_i = (w_i - w_t) / (K * eta_local)
             upd = [
-                (np.asarray(w_i[k], dtype=np.float32) - np.asarray(old_global[k], dtype=np.float32)) / np.float32(norm_factor)
+                (np.asarray(w_i[k], dtype=np.float32) - np.asarray(old_global[k], dtype=np.float32))
+                / np.float32(norm_factor)
                 for k in range(len(w_i))
             ]
             self._update_table[cid] = upd
@@ -372,14 +360,13 @@ class CustomMIFA(Strategy):
         loss_aggregated = weighted_loss_avg(
             [(evaluate_res.num_examples, evaluate_res.loss) for _, evaluate_res in results]
         )
-        
+
         metrics_aggregated: Dict[str, Scalar] = {}
         if self.evaluate_metrics_aggregation_fn:
             eval_metrics = [(res.num_examples, res.metrics) for _, res in results]
             metrics_aggregated = self.evaluate_metrics_aggregation_fn(eval_metrics)
-        
+
         # log eval metrics to wandb
         log_round_metrics(server_round, evaluate_metrics=metrics_aggregated, loss=loss_aggregated)
 
         return loss_aggregated, metrics_aggregated
-

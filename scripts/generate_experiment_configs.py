@@ -35,7 +35,17 @@ DATASETS = {
     },
 }
 
-STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "diws", "fdms"]
+STRATEGIES = [
+    "fedavg",
+    "fedprox",
+    "scaffold",
+    "mifa",
+    "fedadam",
+    "fedyogi",
+    "clusteredfl",
+    "diws",
+    "fdms",
+]
 
 DISTRIBUTIONS = {
     "iid": {"partitioner": "iid", "alpha": None},
@@ -108,20 +118,20 @@ def generate_config(
     dist_config: dict,
 ) -> str:
     """generate a single experiment config yaml content."""
-    
+
     num_clients = dataset_config["num_clients"]
     batch_size = dataset_config["batch_size"]
     local_epochs = dataset_config["local_epochs"]
     learning_rate = dataset_config["learning_rate"]
-    
+
     # determine partitioner
     partitioner = dist_config["partitioner"]
-    
+
     # wandb run name
     dist_suffix = distribution
     scenario_suffix = scenario_override
     run_name = f"{dataset}_{strategy}_{model}_{dist_suffix}_{scenario_suffix}"
-    
+
     # build config
     config = f"""# @package _global_
 # {dataset.upper()} experiment: {strategy} + {model} + {distribution} + {scenario}
@@ -163,7 +173,7 @@ client:
     # add strategy-specific config
     if STRATEGY_CONFIGS.get(strategy):
         config += STRATEGY_CONFIGS[strategy]
-    
+
     # add partitioner config for dirichlet
     if dist_config["alpha"] is not None:
         config += f"""
@@ -209,14 +219,14 @@ logging:
 
 def generate_all_configs():
     """generate all experiment configuration files."""
-    
+
     total_configs = 0
-    
+
     for dataset, dataset_config in DATASETS.items():
         # map dataset name for folder (tiny_imagenet -> tinyimagenet)
         dataset_folder = dataset.replace("_", "")
         seen_overrides = set()
-        
+
         for scenario in SCENARIOS.keys():
             scenario_override = get_scenario_override(scenario, dataset_config)
             if scenario_override in seen_overrides:
@@ -224,13 +234,13 @@ def generate_all_configs():
             seen_overrides.add(scenario_override)
             scenario_dir = CONF_DIR / dataset_folder / scenario
             scenario_dir.mkdir(parents=True, exist_ok=True)
-            
+
             for strategy in STRATEGIES:
                 for model in dataset_config["models"]:
                     for dist_name, dist_config in DISTRIBUTIONS.items():
                         filename = f"{strategy}_{model}_{dist_name}.yaml"
                         filepath = scenario_dir / filename
-                        
+
                         config_content = generate_config(
                             dataset=dataset,
                             strategy=strategy,
@@ -241,16 +251,15 @@ def generate_all_configs():
                             dataset_config=dataset_config,
                             dist_config=dist_config,
                         )
-                        
+
                         with open(filepath, "w") as f:
                             f.write(config_content)
-                        
+
                         total_configs += 1
                         print(f"Generated: {filepath.relative_to(CONF_DIR.parent.parent)}")
-    
+
     print(f"\nTotal configs generated: {total_configs}")
 
 
 if __name__ == "__main__":
     generate_all_configs()
-

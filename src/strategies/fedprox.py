@@ -82,16 +82,16 @@ class CustomFedProx(CustomFedAvg):
         self.proximal_mu = proximal_mu
 
     def __repr__(self) -> str:
-        return f"CustomFedProx(accept_failures={self.accept_failures}, proximal_mu={self.proximal_mu})"
+        return (
+            f"CustomFedProx(accept_failures={self.accept_failures}, proximal_mu={self.proximal_mu})"
+        )
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, FitIns]]:
         """Configure the next round of training with proximal_mu."""
         # get base config from parent
-        client_config_pairs = super().configure_fit(
-            server_round, parameters, client_manager
-        )
+        client_config_pairs = super().configure_fit(server_round, parameters, client_manager)
 
         # add proximal_mu to config
         return [
@@ -112,9 +112,7 @@ class CustomFedProx(CustomFedAvg):
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, EvaluateIns]]:
         """Configure the next round of evaluation."""
-        client_config_pairs = super().configure_evaluate(
-            server_round, parameters, client_manager
-        )
+        client_config_pairs = super().configure_evaluate(server_round, parameters, client_manager)
 
         return [
             (
@@ -129,4 +127,3 @@ class CustomFedProx(CustomFedAvg):
             )
             for client, evaluate_ins in client_config_pairs
         ]
-

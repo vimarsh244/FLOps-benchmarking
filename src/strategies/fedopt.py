@@ -46,7 +46,6 @@ from src.strategies.base import (
 )
 from src.utils.wandb_logger import log_round_metrics
 
-
 WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW = """
 Setting `min_available_clients` lower than `min_fit_clients` or
 `min_evaluate_clients` can cause the server to fail when there are too few clients
@@ -98,10 +97,7 @@ class FedOptBase(Strategy):
     ) -> None:
         super().__init__()
 
-        if (
-            min_fit_clients > min_available_clients
-            or min_evaluate_clients > min_available_clients
-        ):
+        if min_fit_clients > min_available_clients or min_evaluate_clients > min_available_clients:
             log(WARNING, WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW)
 
         self.fraction_fit = fraction_fit
@@ -135,9 +131,7 @@ class FedOptBase(Strategy):
         num_clients = int(num_available_clients * self.fraction_evaluate)
         return max(num_clients, self.min_evaluate_clients), self.min_available_clients
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
+    def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
         """Initialize global model parameters."""
         initial_parameters = self.initial_parameters
         self.initial_parameters = None
@@ -164,12 +158,8 @@ class FedOptBase(Strategy):
 
         fit_ins = FitIns(ndarrays_to_parameters(self._global_model), config)
 
-        sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         return [(client, fit_ins) for client in clients]
 
@@ -188,30 +178,22 @@ class FedOptBase(Strategy):
             config = self.on_evaluate_config_fn(server_round)
         config["current_round"] = server_round
 
-        evaluate_ins = EvaluateIns(
-            ndarrays_to_parameters(self._global_model), config
-        )
+        evaluate_ins = EvaluateIns(ndarrays_to_parameters(self._global_model), config)
 
-        sample_size, min_num_clients = self.num_evaluation_clients(
-            client_manager.num_available()
-        )
-        clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
-        )
+        sample_size, min_num_clients = self.num_evaluation_clients(client_manager.num_available())
+        clients = client_manager.sample(num_clients=sample_size, min_num_clients=min_num_clients)
 
         return [(client, evaluate_ins) for client in clients]
 
-    def _compute_pseudo_gradient(
-        self, results: List[Tuple[ClientProxy, FitRes]]
-    ) -> NDArrays:
+    def _compute_pseudo_gradient(self, results: List[Tuple[ClientProxy, FitRes]]) -> NDArrays:
         """Compute pseudo-gradient (aggregated update direction).
-        
+
         Following FedOpt paper: delta = aggregated - global_model
         This represents the direction clients moved during training.
         """
         weights_results = get_parameters_from_results(results)
         aggregated = aggregate_parameters(weights_results, inplace=False)
-        
+
         # pseudo-gradient = aggregated - global_model (update direction)
         # this is the direction we want to move
         delta = compute_update(aggregated, self._global_model)
@@ -235,10 +217,11 @@ class FedOptBase(Strategy):
 
         # filter out disconnected clients (those with num_examples=0 or empty parameters)
         valid_results = [
-            (client, res) for client, res in results
+            (client, res)
+            for client, res in results
             if res.num_examples > 0 and len(parameters_to_ndarrays(res.parameters)) > 0
         ]
-        
+
         if not valid_results:
             return None, {}
 
@@ -256,13 +239,15 @@ class FedOptBase(Strategy):
 
         # debug: print delta stats
         delta_norm = sum(np.linalg.norm(d.flatten()) for d in delta)
-        log(WARNING, f"[FedOpt] Round {server_round}: delta_norm={delta_norm:.6f}, tau={self.tau}, server_lr={self.server_lr}")
+        log(
+            WARNING,
+            f"[FedOpt] Round {server_round}: delta_norm={delta_norm:.6f}, tau={self.tau}, server_lr={self.server_lr}",
+        )
 
         # update first moment: m = beta_1 * m + (1 - beta_1) * delta
         for i in range(len(self._m)):
-            self._m[i] = (
-                self.beta_1 * self._m[i] 
-                + (1 - self.beta_1) * np.asarray(delta[i], dtype=np.float32)
+            self._m[i] = self.beta_1 * self._m[i] + (1 - self.beta_1) * np.asarray(
+                delta[i], dtype=np.float32
             )
 
         # update second moment (strategy-specific)
@@ -270,17 +255,19 @@ class FedOptBase(Strategy):
 
         # compute effective learning rate (with optional bias correction)
         effective_lr = self._compute_effective_lr(server_round)
-        
+
         # debug: print update stats
         m_norm = sum(np.linalg.norm(m.flatten()) for m in self._m)
         v_norm = sum(np.linalg.norm(v.flatten()) for v in self._v)
-        log(WARNING, f"[FedOpt] Round {server_round}: effective_lr={effective_lr:.6f}, m_norm={m_norm:.6f}, v_norm={v_norm:.6f}")
+        log(
+            WARNING,
+            f"[FedOpt] Round {server_round}: effective_lr={effective_lr:.6f}, m_norm={m_norm:.6f}, v_norm={v_norm:.6f}",
+        )
 
         # update global model: x = x + eta * m / (sqrt(v) + tau)
         for i in range(len(self._global_model)):
-            self._global_model[i] = (
-                self._global_model[i]
-                + effective_lr * self._m[i] / (np.sqrt(self._v[i]) + self.tau)
+            self._global_model[i] = self._global_model[i] + effective_lr * self._m[i] / (
+                np.sqrt(self._v[i]) + self.tau
             )
 
         params = ndarrays_to_parameters(self._global_model)
@@ -299,7 +286,7 @@ class FedOptBase(Strategy):
 
     def _compute_effective_lr(self, server_round: int) -> float:
         """Compute effective learning rate (may include bias correction).
-        
+
         Subclasses can override this to implement bias correction.
         """
         return self.server_lr
@@ -350,10 +337,10 @@ class FedAdam(FedOptBase):
 
     Uses Adam's second moment update rule:
         v = beta_2 * v + (1 - beta_2) * delta^2
-    
+
     Also implements bias correction for proper convergence:
         eta_norm = eta * sqrt(1 - beta_2^t) / (1 - beta_1^t)
-    
+
     Default hyperparameters from Flower:
         server_lr (eta) = 0.1
         tau = 1e-9 (much smaller than FedYogi's 1e-3)
@@ -408,20 +395,20 @@ class FedAdam(FedOptBase):
 
     def _compute_effective_lr(self, server_round: int) -> float:
         """Compute bias-corrected learning rate for Adam.
-        
+
         Following Kingma & Ba, 2014 (http://arxiv.org/abs/1412.6980):
             eta_norm = eta * sqrt(1 - beta_2^t) / (1 - beta_1^t)
-        
+
         This is crucial for proper convergence in early rounds.
         """
         # use server_round + 1 since rounds are 1-indexed but formula expects t >= 1
         t = float(server_round)
         if t < 1:
             t = 1.0
-        
+
         bias_correction_1 = 1 - np.power(self.beta_1, t)
         bias_correction_2 = 1 - np.power(self.beta_2, t)
-        
+
         eta_norm = self.server_lr * np.sqrt(bias_correction_2) / bias_correction_1
         return eta_norm
 
@@ -439,11 +426,11 @@ class FedYogi(FedOptBase):
         v = v - (1 - beta_2) * delta^2 * sign(v - delta^2)
 
     This prevents the learning rate from increasing too much in any direction.
-    
+
     Default hyperparameters from Flower:
         server_lr (eta) = 0.01
         tau = 1e-3 (larger than FedAdam)
-    
+
     Note: FedYogi does NOT use bias correction (unlike FedAdam).
     """
 
@@ -563,4 +550,3 @@ class FedAdagrad(FedOptBase):
         for i in range(len(self._v)):
             delta_sq = np.asarray(delta[i], dtype=np.float32) ** 2
             self._v[i] = self._v[i] + delta_sq
-

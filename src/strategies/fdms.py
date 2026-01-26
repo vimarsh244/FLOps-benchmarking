@@ -57,12 +57,8 @@ class FDMS(Strategy):
     def __repr__(self) -> str:
         return repr(self.aggregator_strategy)
 
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
-        self.global_parameters = self.aggregator_strategy.initialize_parameters(
-            client_manager
-        )
+    def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
+        self.global_parameters = self.aggregator_strategy.initialize_parameters(client_manager)
         return self.global_parameters
 
     def evaluate(
@@ -86,9 +82,7 @@ class FDMS(Strategy):
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, EvaluateIns]]:
-        return self.aggregator_strategy.configure_evaluate(
-            server_round, parameters, client_manager
-        )
+        return self.aggregator_strategy.configure_evaluate(server_round, parameters, client_manager)
 
     def aggregate_fit(
         self,
@@ -108,9 +102,7 @@ class FDMS(Strategy):
         if not valid_results:
             return self.aggregator_strategy.aggregate_fit(server_round, results, failures)
 
-        active_ids = [
-            getattr(client, "cid", None) or str(client) for client, _ in valid_results
-        ]
+        active_ids = [getattr(client, "cid", None) or str(client) for client, _ in valid_results]
         sampled_ids = self._round_sampled_clients.get(server_round, active_ids)
         dropout_ids = [cid for cid in sampled_ids if cid not in active_ids]
 
@@ -150,9 +142,7 @@ class FDMS(Strategy):
         )
 
         augmented_results = valid_results + substituted_results
-        return self.aggregator_strategy.aggregate_fit(
-            server_round, augmented_results, failures
-        )
+        return self.aggregator_strategy.aggregate_fit(server_round, augmented_results, failures)
 
     def aggregate_evaluate(
         self,
@@ -160,9 +150,7 @@ class FDMS(Strategy):
         results: List[Tuple[ClientProxy, EvaluateRes]],
         failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
     ) -> Tuple[Optional[float], Dict[str, Scalar]]:
-        return self.aggregator_strategy.aggregate_evaluate(
-            server_round, results, failures
-        )
+        return self.aggregator_strategy.aggregate_evaluate(server_round, results, failures)
 
     def _build_substituted_results(
         self,

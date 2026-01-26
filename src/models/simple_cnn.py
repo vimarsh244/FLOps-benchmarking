@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 class SimpleCNN(nn.Module):
     """Simple CNN adapted from PyTorch tutorial.
-    
+
     Suitable for CIFAR-10/CIFAR-100 sized images (32x32).
     """
 
@@ -15,7 +15,7 @@ class SimpleCNN(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.in_channels = in_channels
-        
+
         self.conv1 = nn.Conv2d(in_channels, 6, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(6, 16, 5)
@@ -34,7 +34,7 @@ class SimpleCNN(nn.Module):
 
 class SimpleCNNLarge(nn.Module):
     """Larger Simple CNN for more complex tasks.
-    
+
     Better suited for Tiny-ImageNet or when more capacity is needed.
     """
 
@@ -42,32 +42,29 @@ class SimpleCNNLarge(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.in_channels = in_channels
-        
+
         self.features = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2, 2),
-            
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2, 2),
-            
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2, 2),
-            
             nn.Conv2d(128, 256, kernel_size=3, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2, 2),
         )
-        
+
         # calculate flattened size based on image size
         self.flat_size = 256 * (image_size // 16) * (image_size // 16)
-        
+
         self.classifier = nn.Sequential(
             nn.Dropout(0.5),
             nn.Linear(self.flat_size, 512),
@@ -81,4 +78,3 @@ class SimpleCNNLarge(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
         return x
-
