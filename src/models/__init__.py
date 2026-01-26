@@ -1,9 +1,9 @@
 """Model architectures for federated learning."""
 
+from src.models.registry import MODEL_REGISTRY, get_model
+from src.models.resnet import ResNet18, ResNet34, ResNet50, ResNetCIFAR
 from src.models.simple_cnn import SimpleCNN, SimpleCNNLarge
-from src.models.resnet import ResNet18, ResNet34, ResNet50
 from src.models.vit import ViT
-from src.models.registry import get_model, MODEL_REGISTRY
 
 __all__ = [
     "SimpleCNN",
@@ -11,8 +11,8 @@ __all__ = [
     "ResNet18",
     "ResNet34",
     "ResNet50",
+    "ResNetCIFAR",
     "ViT",
     "get_model",
     "MODEL_REGISTRY",
 ]
-

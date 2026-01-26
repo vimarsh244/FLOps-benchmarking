@@ -1,0 +1,5 @@
+# ResNetCIFAR Model Configuration
+name: resnet_cifar
+_target_: src.models.resnet.ResNetCIFAR
+
+depth: 34  # 18 or 34

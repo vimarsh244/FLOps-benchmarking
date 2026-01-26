@@ -1,0 +1,9 @@
+# Pathological (Non-IID) Partitioner Configuration
+name: pathological
+_target_: src.datasets.partitioners.PathologicalPartitioner
+
+# number of classes per client
+num_classes_per_partition: 4
+
+# random seed for reproducibility
+seed: 42

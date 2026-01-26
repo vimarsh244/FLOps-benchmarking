@@ -1,0 +1,9 @@
+# FedPer Strategy Configuration
+name: fedper
+_target_: src.strategies.fedper.FedPer
+
+# this is the number of tensors
+# final fc and immediately preceding block
+# for resnet-34 that's 12 tensors from layer4.2.* + 2 from fc.* = 14
+personal_layer_count: 14
+inplace: true
