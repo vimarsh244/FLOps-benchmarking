@@ -35,7 +35,7 @@ DATASETS = {
     },
 }
 
-STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "diws", "fdms"]
+STRATEGIES = ["fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "diws", "fdms", "diws_fhe"]
 
 DISTRIBUTIONS = {
     "iid": {"partitioner": "iid", "alpha": None},
@@ -85,6 +85,7 @@ strategy:
 """,
     "diws": "",
     "fdms": "",
+    "diws_fhe": "",
 }
 
 
