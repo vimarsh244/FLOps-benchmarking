@@ -1,48 +1,16 @@
 # Distributed Hardware Configuration
-# Runs on physical devices via SSH
+# Runs on physical devices via SSH/Ansible
 name: distributed
 mode: distributed
 
 # server configuration
 server:
-  host: "0.0.0.0"
+  host: "10.8.1.221"  # Vagator2
   port: 8080
-  # SSL/TLS configuration (optional)
   ssl:
     enabled: false
     cert_path: null
     key_path: null
-
-# client devices configuration
-devices:
-  # list of devices with their connection info
-  - name: rpi5-1
-    host: 192.168.1.101
-    user: pi
-    ssh_key: ~/.ssh/id_rsa
-    python_env: ~/envs/flops/bin/python
-    device_type: raspberry_pi_5
-    
-  - name: rpi5-2
-    host: 192.168.1.102
-    user: pi
-    ssh_key: ~/.ssh/id_rsa
-    python_env: ~/envs/flops/bin/python
-    device_type: raspberry_pi_5
-    
-  - name: orin-nx-1
-    host: 192.168.1.103
-    user: nvidia
-    ssh_key: ~/.ssh/id_rsa
-    python_env: ~/envs/flops/bin/python
-    device_type: jetson_orin_nx
-    
-  - name: orin-nano-1
-    host: 192.168.1.104
-    user: nvidia
-    ssh_key: ~/.ssh/id_rsa
-    python_env: ~/envs/flops/bin/python
-    device_type: jetson_orin_nano
 
 # deployment settings
 deployment:
@@ -54,3 +22,148 @@ deployment:
   # path on remote devices
   remote_path: ~/flops-benchmarking
 
+# client devices configuration
+# Note: When use_ansible is True, this list is primarily for reference/logging
+# or fallback SSH execution. The actual execution relies on the inventory.yml.
+devices:
+  # --- Vagators (Jetson Orin NX) ---
+  - name: vagator1
+    host: 10.8.1.220
+    user: nvidia
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: jetson_orin_nx
+
+  - name: vagator2
+    host: 10.8.1.221
+    user: nvidia
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: jetson_orin_nx
+
+  # --- Cortalims (Raspberry Pis) ---
+  - name: cortalim1
+    host: 10.8.1.200
+    user: cortalim1
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim2
+    host: 10.8.1.46
+    user: cortalim2
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim3
+    host: 10.8.1.189
+    user: cortalim3
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_4b
+
+  - name: cortalim4
+    host: 10.8.1.210
+    user: cortalim4
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim5
+    host: 10.8.1.185
+    user: cortalim5
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_4b
+
+  - name: cortalim6
+    host: 10.8.1.159
+    user: cortalim6
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim7
+    host: 10.8.1.152
+    user: cortalim7
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim8
+    host: 10.8.1.216
+    user: cortalim8
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim9
+    host: 10.8.1.215
+    user: cortalim9
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim10
+    host: 10.8.1.190
+    user: cortalim10
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_4b
+
+  - name: cortalim11
+    host: 10.8.1.202
+    user: cortalim11
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim12
+    host: 10.8.1.197
+    user: cortalim12
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim13
+    host: 10.8.1.196
+    user: cortalim13
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim14
+    host: 10.8.1.186
+    user: cortalim14
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim15
+    host: 10.8.1.198
+    user: cortalim15
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim16
+    host: 10.8.1.184
+    user: cortalim16
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim17
+    host: 10.8.1.188
+    user: cortalim17
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_5
+
+  - name: cortalim18
+    host: 10.8.1.206
+    user: cortalim18
+    ssh_key: ~/.ssh/id_rsa
+    python_env: ~/envs/flops/bin/python
+    device_type: raspberry_pi_4b

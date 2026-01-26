@@ -28,7 +28,8 @@ outputs/
 client_context.pkl
 server_context.pkl
 
-
 .env
 
 conf/experiment/**/*.yaml
+
+results/
