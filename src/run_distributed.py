@@ -397,3 +397,66 @@ def run_client(
         server_address=server_address,
         client=client.to_client(),
     )
+
+
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
+def main(cfg: DictConfig) -> None:
+    """Main entry point for distributed mode.
+    
+    This can be called with:
+        python -m src.run_distributed server [--host HOST] [--port PORT]
+        python -m src.run_distributed client --server-address HOST:PORT --partition-id ID
+    
+    Args:
+        cfg: Hydra configuration
+    """
+    import sys
+    
+    logger = setup_logging(level="INFO")
+    
+    # parse command line to determine mode
+    if len(sys.argv) < 2:
+        logger.error("Usage: python -m src.run_distributed {server|client} [options]")
+        sys.exit(1)
+    
+    mode = sys.argv[1].lower()
+    
+    if mode == "server":
+        logger.info("Starting in server mode")
+        # optionally parse host/port from command line
+        # for now, use config
+        run_server(cfg)
+        
+    elif mode == "client":
+        logger.info("Starting in client mode")
+        # parse server address and partition id from command line
+        server_address = None
+        partition_id = None
+        
+        for i, arg in enumerate(sys.argv):
+            if arg == "--server-address" and i + 1 < len(sys.argv):
+                server_address = sys.argv[i + 1]
+            elif arg == "--partition-id" and i + 1 < len(sys.argv):
+                partition_id = int(sys.argv[i + 1])
+        
+        if server_address is None:
+            # try to get from config
+            server_cfg = cfg.hardware.get("server", {})
+            host = server_cfg.get("host", "localhost")
+            port = server_cfg.get("port", 8080)
+            server_address = f"{host}:{port}"
+            logger.info(f"Using server address from config: {server_address}")
+        
+        if partition_id is None:
+            logger.error("--partition-id is required for client mode")
+            sys.exit(1)
+        
+        run_client(server_address, partition_id, cfg)
+        
+    else:
+        logger.error(f"Unknown mode: {mode}. Use 'server' or 'client'")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

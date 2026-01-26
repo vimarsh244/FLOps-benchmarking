@@ -1,0 +1,24 @@
+# @package _global_
+# DIWS-FHE with IID data partitioning on hardware testbed
+
+defaults:
+  - override /strategy: diws_fhe
+  - override /partitioner: iid
+  - override /scenario: baseline
+  - override /hardware: distributed
+  - override /dataset: cifar10
+  - override /model: resnet18
+  - override /logging: wandb
+
+experiment:
+  name: diws_fhe_iid_hardware
+
+# hardware testbed has 20 clients (2 vagators + 18 cortalims)
+client:
+  num_clients: 20
+
+server:
+  num_rounds: 50
+  min_fit_clients: 15
+  min_evaluate_clients: 15
+  min_available_clients: 15
