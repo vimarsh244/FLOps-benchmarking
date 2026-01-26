@@ -165,7 +165,7 @@ def create_strategy(
         strategy_params["warm_start"] = config.strategy.get("warm_start", False)
 
     elif strategy_name == "fedper":
-        strategy_params["personal_layer_count"] = config.strategy.get("personal_layer_count", 4)
+        strategy_params["personal_layer_count"] = config.strategy.get("personal_layer_count", 0)
         strategy_params["inplace"] = config.strategy.get("inplace", True)
 
     elif strategy_name == "fedadam":

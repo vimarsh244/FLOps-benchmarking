@@ -72,7 +72,7 @@ class FedPer(Strategy):
         initial_parameters: Optional[Parameters] = None,
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
-        personal_layer_count: int = 2,
+        personal_layer_count: int = 0,
         inplace: bool = True,
     ) -> None:
         super().__init__()
