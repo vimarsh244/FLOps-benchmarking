@@ -304,12 +304,6 @@ def run_server(cfg: DictConfig) -> None:
 
     logger = get_logger()
 
-    # initialize wandb on server if enabled
-    # this collects all client metrics since strategies call log_round_metrics()
-    wandb_run = None
-    if cfg.logging.get("backend") == "wandb":
-        wandb_run = _init_wandb_for_server(cfg)
-
     # create model for initial parameters
     model = get_model_from_config(cfg.model, cfg.dataset)
     initial_parameters = get_initial_parameters(model)
@@ -322,6 +316,7 @@ def run_server(cfg: DictConfig) -> None:
     server_cfg = cfg.hardware.get("server", {})
     host = server_cfg.get("host", "0.0.0.0")
     port = server_cfg.get("port", 8080)
+
     num_rounds = cfg.server.get("num_rounds")
 
     logger.info(f"Starting Flower server on {host}:{port} for {num_rounds} rounds")
@@ -402,56 +397,3 @@ def run_client(
         server_address=server_address,
         client=client.to_client(),
     )
-
-
-if __name__ == "__main__":
-    # Initialize logging
-    setup_logging()
-
-    # Argument parser
-    parser = argparse.ArgumentParser(description="Flower Distributed Runner")
-    subparsers = parser.add_subparsers(
-        dest="mode", required=True, help="Mode to run: server or client"
-    )
-
-    # Server subcommand
-    server_parser = subparsers.add_parser("server", help="Run the Flower Server")
-    server_parser.add_argument("--host", type=str, default="0.0.0.0", help="Server bind host")
-    server_parser.add_argument("--port", type=int, default=8080, help="Server bind port")
-    # Client subcommand
-    client_parser = subparsers.add_parser("client", help="Run a Flower Client")
-    client_parser.add_argument(
-        "--server-address", type=str, required=True, help="Server address (IP:PORT)"
-    )
-    client_parser.add_argument("--partition-id", type=int, required=True, help="Data partition ID")
-
-    args = parser.parse_args()
-
-    # Load default Hydra configuration
-    # This assumes your 'conf' directory is at the root of the repo (parent of src)
-    with hydra.initialize(version_base=None, config_path="../conf"):
-        cfg = hydra.compose(config_name="config")
-
-    if args.mode == "server":
-        # Override config with CLI arguments
-        # FIX: Unlock the config dict so we can add 'server' keys if they are missing
-        with open_dict(cfg):
-            if "hardware" not in cfg:
-                cfg.hardware = {}
-            if "server" not in cfg.hardware:
-                cfg.hardware.server = {}
-
-            cfg.hardware.server.host = args.host
-            cfg.hardware.server.port = args.port
-
-            if "server" not in cfg:
-                cfg.server = {}
-
-            # handle wandb configuration from CLI
-            if "logging" not in cfg:
-                cfg.logging = {}
-
-        run_server(cfg)
-
-    elif args.mode == "client":
-        run_client(args.server_address, args.partition_id, cfg)

@@ -45,6 +45,7 @@ STRATEGIES = [
     "clusteredfl",
     "diws",
     "fdms",
+    "diws_fhe",
 ]
 
 DISTRIBUTIONS = {
@@ -95,6 +96,7 @@ strategy:
 """,
     "diws": "",
     "fdms": "",
+    "diws_fhe": "",
 }
 
 

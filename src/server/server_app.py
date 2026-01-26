@@ -23,6 +23,7 @@ from src.strategies.mifa import CustomMIFA
 from src.strategies.clusteredfl import CustomClusteredFL
 from src.strategies.scaffold import SCAFFOLD
 from src.strategies.diws import DIWS
+from src.strategies.diws_fhe import DIWSFHE
 from src.strategies.fdms import FDMS
 
 # use Flower's built-in adaptive optimizers - they're well-tested
@@ -36,6 +37,7 @@ STRATEGY_REGISTRY: Dict[str, type] = {
     "clusteredfl": CustomClusteredFL,
     "scaffold": SCAFFOLD,
     "diws": DIWS,
+    "diws_fhe": DIWSFHE,
     "fdms": FDMS,
     # use Flower's built-in FedOpt strategies
     "fedadam": FedAdam,
@@ -192,6 +194,29 @@ def create_strategy(
         return DIWS(
             aggregator_strategy=base_strategy,
             substitution_timeout=config.strategy.get("substitution_timeout", 600.0),
+        )
+
+    if strategy_name == "diws_fhe":
+        base_strategy = CustomFedAvg(
+            **common_params,
+            inplace=config.strategy.get("inplace", True),
+        )
+        fhe_cfg = config.strategy.get("fhe", {})
+        coeff_mod_bit_sizes = fhe_cfg.get("coeff_mod_bit_sizes")
+        if coeff_mod_bit_sizes is not None:
+            coeff_mod_bit_sizes = list(coeff_mod_bit_sizes)
+        return DIWSFHE(
+            aggregator_strategy=base_strategy,
+            substitution_timeout=config.strategy.get("substitution_timeout", 600.0),
+            server_context_path=fhe_cfg.get("server_context_path", "server_context.pkl"),
+            client_context_path=fhe_cfg.get("client_context_path", "client_context.pkl"),
+            poly_modulus_degree=fhe_cfg.get("poly_modulus_degree", 16384),
+            coeff_mod_bit_sizes=coeff_mod_bit_sizes,
+            global_scale_bits=fhe_cfg.get("global_scale_bits", 29),
+            binary_search_iterations=fhe_cfg.get("binary_search_iterations", 5),
+            mask_range=tuple(fhe_cfg.get("mask_range", [10.0, 100.0])),
+            max_protocol_iters=fhe_cfg.get("max_protocol_iters", 3),
+            feasibility_epsilon=fhe_cfg.get("feasibility_epsilon", 0.01),
         )
 
     if strategy_name == "fdms":
