@@ -8,10 +8,17 @@
   vars:
     local_repo_path: "{{ playbook_dir }}/../../"
     remote_repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
-    # Proxy configuration for vagator2 gateway
+    # Proxy configuration (set flops_proxy_url per-host/group in inventory if needed)
+    proxy_url: "{{ flops_proxy_url | default('') }}"
     proxy_env:
-      http_proxy: "http://10.1.19.113:8888"
-      https_proxy: "http://10.1.19.113:8888"
+      http_proxy: "{{ proxy_url }}"
+      https_proxy: "{{ proxy_url }}"
+    pip_proxy_args: >-
+      {{ '--proxy ' ~ proxy_url
+         ~ ' --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org'
+         if proxy_url else '' }}
+    pip_extra_args: "{{ '--prefer-binary' if inventory_hostname == 'vagator2' else '' }}"
+    pip_install_args: "{{ (pip_proxy_args ~ ' ' ~ pip_extra_args) | trim }}"
   
   tasks:
     - name: Synchronize code to remote devices
@@ -28,6 +35,27 @@
           - "--exclude=*.egg-info"
           - "--exclude=deployment" 
       delegate_to: localhost
+
+    - name: Install build deps for vagator2
+      become: true
+      apt:
+        name:
+          - build-essential
+          - python3-dev
+          - python3-wheel
+          - golang-go
+        state: present
+      when: ansible_os_family == "Debian" and inventory_hostname == "vagator2"
+
+    - name: Ensure wheel tooling in venv for vagator2
+      pip:
+        name:
+          - wheel
+          - setuptools
+          - pip
+        state: latest
+        virtualenv: "{{ python_env | dirname | dirname }}"
+      when: inventory_hostname == "vagator2"
     
     # FIX 1: Force install older huggingface_hub compatible with Python 3.8
     # FIX 2: Added extra_args to bypass SSL errors via proxy
@@ -36,8 +64,16 @@
         name: "huggingface_hub<0.31.0"
         virtualenv: "{{ python_env | dirname | dirname }}"
         state: present
-        extra_args: "--proxy http://10.1.19.113:8888 --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org"
+        extra_args: "{{ pip_install_args }}"
       environment: "{{ proxy_env }}"
+      when: proxy_url | length > 0
+
+    - name: Install Python 3.8 compatible libraries (no proxy)
+      pip:
+        name: "huggingface_hub<0.31.0"
+        virtualenv: "{{ python_env | dirname | dirname }}"
+        state: present
+      when: proxy_url | length == 0
 
     # FIX 3: Added extra_args here as well for requirements.txt
     - name: Install Python dependencies
@@ -45,8 +81,17 @@
         requirements: "{{ remote_repo_path }}/requirements.txt"
         virtualenv: "{{ python_env | dirname | dirname }}"
         state: present
-        extra_args: "--proxy http://10.1.19.113:8888 --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org"
+        extra_args: "{{ pip_install_args }}"
       environment: "{{ proxy_env }}"
+      when: proxy_url | length > 0
+
+    - name: Install Python dependencies (no proxy)
+      pip:
+        requirements: "{{ remote_repo_path }}/requirements.txt"
+        virtualenv: "{{ python_env | dirname | dirname }}"
+        state: present
+        extra_args: "{{ pip_extra_args }}"
+      when: proxy_url | length == 0
     
     - name: Display sync status
       debug:

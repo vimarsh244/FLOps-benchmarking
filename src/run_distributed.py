@@ -68,8 +68,12 @@ def run_distributed_experiment(cfg: DictConfig) -> None:
     remote_path = deploy_cfg.get("remote_path", "~/flops-benchmarking")
 
     if sync_code:
-        logger.info("Syncing code to remote devices...")
-        sync_code_to_devices(devices, remote_path)
+        if use_ansible:
+            logger.info("Syncing code to remote devices with Ansible...")
+            sync_code_with_ansible(cfg, remote_path)
+        else:
+            logger.info("Syncing code to remote devices...")
+            sync_code_to_devices(devices, remote_path)
 
     if use_ansible:
         run_with_ansible(cfg, devices, remote_path)
@@ -120,6 +124,89 @@ def sync_code_to_devices(devices: List[DeviceInfo], remote_path: str) -> None:
                 logger.error(f"Exception syncing to {dev.name}: {e}")
 
 
+def sync_code_with_ansible(cfg: DictConfig, remote_path: str) -> None:
+    """Sync code using the Ansible playbook.
+
+    Args:
+        cfg: Hydra configuration
+        remote_path: Path on remote devices
+    """
+    logger = get_logger()
+    project_root = Path(__file__).parent.parent
+    inventory_path = cfg.hardware.deployment.get("ansible_inventory")
+    if not inventory_path:
+        logger.warning("Ansible inventory not configured, skipping Ansible sync")
+        return
+
+    inventory_file = Path(inventory_path)
+    if not inventory_file.is_absolute():
+        inventory_file = project_root / inventory_file
+
+    playbook_path = project_root / "deployment" / "ansible" / "sync_code.yml"
+    if not inventory_file.exists() or not playbook_path.exists():
+        logger.warning("Ansible inventory or playbook missing, skipping Ansible sync")
+        return
+
+    cmd = [
+        "ansible-playbook",
+        "-i",
+        str(inventory_file),
+        str(playbook_path),
+        "-e",
+        f"flops_repo_path={remote_path}",
+    ]
+    result = subprocess.run(cmd, cwd=project_root)
+    if result.returncode != 0:
+        logger.error("Ansible sync failed")
+
+
+def build_hydra_overrides(cfg: DictConfig) -> str:
+    """Build hydra override string from configuration.
+
+    Args:
+        cfg: Hydra configuration
+
+    Returns:
+        String of hydra overrides for Ansible playbook
+    """
+    overrides = []
+    
+    # strategy
+    if cfg.get("strategy") and cfg.strategy.get("name"):
+        overrides.append(f"strategy={cfg.strategy.name}")
+    
+    # partitioner
+    if cfg.get("partitioner") and cfg.partitioner.get("name"):
+        overrides.append(f"partitioner={cfg.partitioner.name}")
+    
+    # dataset
+    if cfg.get("dataset") and cfg.dataset.get("name"):
+        overrides.append(f"dataset={cfg.dataset.name}")
+    
+    # model
+    if cfg.get("model") and cfg.model.get("name"):
+        overrides.append(f"model={cfg.model.name}")
+    
+    # scenario
+    if cfg.get("scenario") and cfg.scenario.get("name"):
+        overrides.append(f"scenario={cfg.scenario.name}")
+    
+    # server settings
+    if cfg.get("server"):
+        if cfg.server.get("num_rounds"):
+            overrides.append(f"server.num_rounds={cfg.server.num_rounds}")
+    
+    # client settings
+    if cfg.get("client"):
+        if cfg.client.get("num_clients"):
+            overrides.append(f"client.num_clients={cfg.client.num_clients}")
+    
+    # always include hardware=distributed
+    overrides.append("hardware=distributed")
+    
+    return " ".join(overrides)
+
+
 def run_with_ansible(
     cfg: DictConfig,
     devices: List[DeviceInfo],
@@ -132,28 +219,42 @@ def run_with_ansible(
         devices: List of device configurations
         remote_path: Path on remote devices
     """
+    import json
+    
     logger = get_logger()
     logger.info("Running with Ansible orchestration")
 
     # check for ansible inventory
     inventory_path = cfg.hardware.deployment.get("ansible_inventory")
-    if inventory_path and Path(inventory_path).exists():
+    project_root = Path(__file__).parent.parent
+    inventory_file = None
+    if inventory_path:
+        inventory_file = Path(inventory_path)
+        if not inventory_file.is_absolute():
+            inventory_file = project_root / inventory_file
+
+    if inventory_file and inventory_file.exists():
         # run ansible playbook
-        playbook_path = (
-            Path(__file__).parent.parent / "deployment" / "ansible" / "run_experiment.yml"
-        )
+        playbook_path = project_root / "deployment" / "ansible" / "run_experiment.yml"
         if playbook_path.exists():
+            # build hydra overrides from config
+            hydra_overrides = build_hydra_overrides(cfg)
+            logger.info(f"Hydra overrides: {hydra_overrides}")
+            
             cmd = [
                 "ansible-playbook",
                 "-i",
-                inventory_path,
+                str(inventory_file),
                 str(playbook_path),
                 "-e",
-                f"remote_path={remote_path}",
+                f"flops_repo_path={remote_path}",
                 "-e",
                 f"server_address={cfg.hardware.server.host}:{cfg.hardware.server.port}",
+                "-e",
+                json.dumps({"hydra_overrides": hydra_overrides}),
             ]
-            subprocess.run(cmd)
+            logger.info(f"Running Ansible: {' '.join(cmd)}")
+            subprocess.run(cmd, cwd=project_root)
         else:
             logger.warning("Ansible playbook not found, falling back to SSH")
             run_with_ssh(cfg, devices, remote_path)
@@ -303,6 +404,10 @@ def run_server(cfg: DictConfig) -> None:
     from src.server.server_app import get_initial_parameters
 
     logger = get_logger()
+    wandb_run = None
+
+    if cfg.logging.get("backend") == "wandb":
+        wandb_run = _init_wandb_for_server(cfg)
 
     # create model for initial parameters
     model = get_model_from_config(cfg.model, cfg.dataset)
@@ -328,6 +433,9 @@ def run_server(cfg: DictConfig) -> None:
             config=fl.server.ServerConfig(num_rounds=num_rounds),
             strategy=strategy,
         )
+    except Exception as e:
+        logger.error(f"Error starting server: {e}")
+        raise e
     finally:
         # ensure wandb is properly finished even if server crashes
         if wandb_run is not None:
@@ -404,8 +512,9 @@ def main(cfg: DictConfig) -> None:
     """Main entry point for distributed mode.
     
     This can be called with:
-        python -m src.run_distributed server [--host HOST] [--port PORT]
-        python -m src.run_distributed client --server-address HOST:PORT --partition-id ID
+        python -m src.run_distributed hardware.run_mode=server
+        python -m src.run_distributed hardware.run_mode=client \
+            hardware.server_address=HOST:PORT hardware.partition_id=ID
     
     Args:
         cfg: Hydra configuration
@@ -414,12 +523,15 @@ def main(cfg: DictConfig) -> None:
     
     logger = setup_logging(level="INFO")
     
-    # parse command line to determine mode
-    if len(sys.argv) < 2:
-        logger.error("Usage: python -m src.run_distributed {server|client} [options]")
+    mode = cfg.hardware.get("run_mode")
+    if not mode:
+        logger.error(
+            "Missing hardware.run_mode. Set hardware.run_mode=server or "
+            "hardware.run_mode=client in your overrides."
+        )
         sys.exit(1)
     
-    mode = sys.argv[1].lower()
+    mode = str(mode).lower()
     
     if mode == "server":
         logger.info("Starting in server mode")
@@ -429,26 +541,17 @@ def main(cfg: DictConfig) -> None:
         
     elif mode == "client":
         logger.info("Starting in client mode")
-        # parse server address and partition id from command line
-        server_address = None
-        partition_id = None
-        
-        for i, arg in enumerate(sys.argv):
-            if arg == "--server-address" and i + 1 < len(sys.argv):
-                server_address = sys.argv[i + 1]
-            elif arg == "--partition-id" and i + 1 < len(sys.argv):
-                partition_id = int(sys.argv[i + 1])
-        
-        if server_address is None:
-            # try to get from config
+        server_address = cfg.hardware.get("server_address")
+        if not server_address:
             server_cfg = cfg.hardware.get("server", {})
             host = server_cfg.get("host", "localhost")
             port = server_cfg.get("port", 8080)
             server_address = f"{host}:{port}"
             logger.info(f"Using server address from config: {server_address}")
-        
+
+        partition_id = cfg.hardware.get("partition_id")
         if partition_id is None:
-            logger.error("--partition-id is required for client mode")
+            logger.error("hardware.partition_id is required for client mode")
             sys.exit(1)
         
         run_client(server_address, partition_id, cfg)

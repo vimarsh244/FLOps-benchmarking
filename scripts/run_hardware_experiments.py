@@ -28,17 +28,18 @@ Usage:
 """
 
 import argparse
+import json
 import subprocess
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 # project root
 PROJECT_ROOT = Path(__file__).parent.parent
 INVENTORY_PATH = PROJECT_ROOT / "deployment" / "ansible" / "inventory.yml"
 SYNC_CODE_PLAYBOOK = PROJECT_ROOT / "deployment" / "ansible" / "sync_code.yml"
+RUN_EXPERIMENT_PLAYBOOK = PROJECT_ROOT / "deployment" / "ansible" / "run_experiment.yml"
 
 # available options
 STRATEGIES = ["diws", "diws_fhe", "fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "fdms"]
@@ -143,7 +144,7 @@ def sync_code_to_devices(inventory_path: Path, dry_run: bool = False) -> bool:
 def run_hardware_experiment(
     config: ExperimentConfig,
     dry_run: bool = False,
-) -> tuple[bool, float]:
+) -> Tuple[bool, float]:
     """Run a single hardware experiment.
     
     Args:
@@ -167,9 +168,16 @@ def run_hardware_experiment(
     
     # build command
     hydra_overrides = config.to_hydra_overrides()
-    python_cmd = f"python -m src.main {hydra_overrides}"
-    
-    print(f"\nCommand: {python_cmd}")
+    ansible_cmd = [
+        "ansible-playbook",
+        str(RUN_EXPERIMENT_PLAYBOOK),
+        "-i",
+        str(INVENTORY_PATH),
+        "-e",
+        json.dumps({"hydra_overrides": hydra_overrides}),
+    ]
+
+    print(f"\nCommand: {' '.join(ansible_cmd)}")
     
     if dry_run:
         print("[DRY RUN] Would execute the above command")
@@ -178,10 +186,9 @@ def run_hardware_experiment(
     start_time = time.time()
     
     try:
-        # run the experiment
+        # run the experiment via ansible
         result = subprocess.run(
-            python_cmd,
-            shell=True,
+            ansible_cmd,
             cwd=PROJECT_ROOT,
             check=True,
             capture_output=False,  # let output stream to console

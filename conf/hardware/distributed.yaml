@@ -22,6 +22,11 @@ deployment:
   # path on remote devices
   remote_path: ~/flops-benchmarking
 
+# runtime overrides for ansible/cli
+run_mode: null
+server_address: null
+partition_id: null
+
 # client devices configuration
 # Note: When use_ansible is True, this list is primarily for reference/logging
 # or fallback SSH execution. The actual execution relies on the inventory.yml.
@@ -29,14 +34,14 @@ devices:
   # --- Vagators (Jetson Orin NX) ---
   - name: vagator1
     host: 10.1.19.112
-    user: nvidia
+    user: vagator1
     ssh_key: ~/.ssh/id_rsa
     python_env: ~/envs/flops/bin/python
     device_type: jetson_orin_nx
 
   - name: vagator2
     host: 10.1.19.113
-    user: nvidia
+    user: vagator2
     ssh_key: ~/.ssh/id_rsa
     python_env: ~/envs/flops/bin/python
     device_type: jetson_orin_nx

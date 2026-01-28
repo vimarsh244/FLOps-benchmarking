@@ -7,21 +7,25 @@
   
   vars:
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+    # note: hydra_overrides is passed via -e from the calling script, use directly with default filter
+    experiment_overrides: "{{ hydra_overrides | default('') }}"
+    hf_offline: "{{ flops_hf_offline | default(false) }}"
     # wandb configuration - set wandb_api_key in inventory or extra vars
     enable_wandb: "{{ wandb_enabled | default(true) }}"
     wandb_project_name: "{{ wandb_project | default('flops-benchmarking') }}"
     wandb_run_name: "{{ wandb_name | default('') }}"
-    # Define Proxy Environment
+    # Proxy configuration (set flops_proxy_url per-host/group in inventory if needed)
+    proxy_url: "{{ flops_proxy_url | default('') }}"
     proxy_env:
-      http_proxy: "http://10.1.19.113:8888"
-      https_proxy: "http://10.1.19.113:8888"
-      # CRITICAL FIX: Bypass proxy for local connections (Vagator2 IP)
+      http_proxy: "{{ proxy_url }}"
+      https_proxy: "{{ proxy_url }}"
+      # Bypass proxy for local connections (Vagator2 IP)
       no_proxy: "10.1.19.113,localhost,127.0.0.1,::1,api.wandb.ai,wandb.ai"
       # Disable SSL Verify for Hugging Face downloads to bypass firewall cert issues
       HF_HUB_DISABLE_SSL_VERIFY: "1"
       CURL_CA_BUNDLE: ""
-      HF_DATASETS_OFFLINE: "1"
-      HF_HUB_OFFLINE: "1"
+      HF_DATASETS_OFFLINE: "{{ '1' if hf_offline else '0' }}"
+      HF_HUB_OFFLINE: "{{ '1' if hf_offline else '0' }}"
       # wandb config - set WANDB_API_KEY in your environment or inventory
       WANDB_API_KEY: "{{ wandb_api_key | default(lookup('env', 'WANDB_API_KEY')) }}"
       # use offline mode if no API key is provided
@@ -32,16 +36,16 @@
       shell: |
         cd {{ repo_path }}
         # Added -u for unbuffered output
-        nohup {{ python_env }} -u -m src.run_distributed server \
-          --host {{ ansible_host | default('0.0.0.0') }} \
-          --port {{ server_port | default(8080) }} \
+        nohup {{ python_env }} -u -m src.run_distributed \
+          hardware.run_mode=server \
+          {{ experiment_overrides }} \
           > server.log 2>&1 &
         echo $!
       register: server_pid
       async: 10
       poll: 0
       # Apply proxy settings to the server process
-      environment: "{{ proxy_env }}"
+      environment: "{{ proxy_env if proxy_url | length > 0 else {} }}"
       
     - name: Wait for server to start
       wait_for:
@@ -82,17 +86,21 @@
   
   vars:
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
-    # Define Proxy Environment
+    # note: hydra_overrides is passed via -e from the calling script
+    experiment_overrides: "{{ hydra_overrides | default('') }}"
+    hf_offline: "{{ flops_hf_offline | default(false) }}"
+    # Proxy configuration (set flops_proxy_url per-host/group in inventory if needed)
+    proxy_url: "{{ flops_proxy_url | default('') }}"
     proxy_env:
-      http_proxy: "http://10.1.19.113:8888"
-      https_proxy: "http://10.1.19.113:8888"
-      # CRITICAL FIX: Bypass proxy for local connections (Vagator2 IP)
+      http_proxy: "{{ proxy_url }}"
+      https_proxy: "{{ proxy_url }}"
+      # Bypass proxy for local connections (Vagator2 IP)
       no_proxy: "10.1.19.113,localhost,127.0.0.1,::1"
       # Disable SSL verify specifically for Hugging Face
       HF_HUB_DISABLE_SSL_VERIFY: "1"
       CURL_CA_BUNDLE: ""
-      HF_DATASETS_OFFLINE: "1"
-      HF_HUB_OFFLINE: "1"
+      HF_DATASETS_OFFLINE: "{{ '1' if hf_offline else '0' }}"
+      HF_HUB_OFFLINE: "{{ '1' if hf_offline else '0' }}"
   
   tasks:
     - name: Synchronize code to client devices
@@ -115,15 +123,17 @@
       shell: |
         cd {{ repo_path }}
         # Uses server_address from inventory, defaults to localhost if missing
-        {{ python_env }} -m src.run_distributed client \
-          --server-address {{ server_address | default('localhost:8080') }} \
-          --partition-id {{ partition_id }} \
+        {{ python_env }} -m src.run_distributed \
+          hardware.run_mode=client \
+          hardware.server_address={{ server_address | default('localhost:8080') }} \
+          hardware.partition_id={{ partition_id }} \
+          {{ experiment_overrides }} \
           > client_{{ partition_id }}.log 2>&1
       async: 28800  # 8hr timeout
       poll: 0
       register: client_job
       # Apply proxy settings to the client process
-      environment: "{{ proxy_env }}"
+      environment: "{{ proxy_env if proxy_url | length > 0 else {} }}"
       
     - name: Display client info
       debug:

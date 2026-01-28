@@ -8,8 +8,8 @@
   
   vars:
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
-    # hydra overrides passed as extra var
-    hydra_overrides: "{{ hydra_overrides | default('') }}"
+    # note: hydra_overrides is passed via -e from the calling script, use directly with default filter
+    experiment_overrides: "{{ hydra_overrides | default('') }}"
     # wandb configuration - set wandb_api_key in inventory or extra vars
     enable_wandb: "{{ wandb_enabled | default(true) }}"
     wandb_project_name: "{{ wandb_project | default('flops-benchmarking') }}"
@@ -33,7 +33,7 @@
         # run main.py with hardware=distributed and any additional overrides
         nohup {{ python_env }} -u -m src.main \
           hardware=distributed \
-          {{ hydra_overrides }} \
+          {{ experiment_overrides }} \
           > server.log 2>&1 &
         echo $!
       register: server_pid
@@ -69,7 +69,7 @@
       debug:
         msg: |
           Server started on {{ ansible_host | default('0.0.0.0') }}:{{ server_port | default(8080) }}
-          Config overrides: {{ hydra_overrides }}
+          Config overrides: {{ experiment_overrides }}
           To monitor server logs in real-time, SSH to server and run:
             tail -f {{ repo_path }}/server.log
           WandB mode: {{ 'online' if (wandb_api_key is defined and wandb_api_key) or lookup('env', 'WANDB_API_KEY') else 'offline' }}
@@ -81,7 +81,8 @@
   
   vars:
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
-    hydra_overrides: "{{ hydra_overrides | default('') }}"
+    # note: hydra_overrides is passed via -e from the calling script
+    experiment_overrides: "{{ hydra_overrides | default('') }}"
     # proxy environment
     proxy_env:
       http_proxy: "http://10.1.19.113:8888"
@@ -120,7 +121,7 @@
           hardware.server.host={{ server_address.split(':')[0] | default('localhost') }} \
           hardware.server.port={{ server_address.split(':')[1] | default('8080') }} \
           client.partition_id={{ partition_id }} \
-          {{ hydra_overrides }} \
+          {{ experiment_overrides }} \
           > client_{{ partition_id }}.log 2>&1
       async: 28800  # 8hr timeout
       poll: 0
