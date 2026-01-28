@@ -42,6 +42,13 @@ training:
   device: auto  # auto, cpu, cuda, mps
   use_amp: false  # automatic mixed precision
   gradient_clip: null  # gradient clipping value
+  cpu_threads: auto  # auto uses all available cpu cores
+  interop_threads: auto  # auto uses all available cpu cores
+  dataloader_workers: auto  # auto uses all available cpu cores
+  pin_memory: auto  # auto enables when cuda is available
+  persistent_workers: true
+  prefetch_factor: 2
+  cudnn_benchmark: auto  # auto enables when cuda is available
   
 # evaluation configuration
 evaluation:

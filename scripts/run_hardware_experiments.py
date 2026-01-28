@@ -42,7 +42,18 @@ SYNC_CODE_PLAYBOOK = PROJECT_ROOT / "deployment" / "ansible" / "sync_code.yml"
 RUN_EXPERIMENT_PLAYBOOK = PROJECT_ROOT / "deployment" / "ansible" / "run_experiment.yml"
 
 # available options
-STRATEGIES = ["diws", "diws_fhe", "fedavg", "fedprox", "scaffold", "mifa", "fedadam", "fedyogi", "clusteredfl", "fdms"]
+STRATEGIES = [
+    "diws",
+    "diws_fhe",
+    "fedavg",
+    "fedprox",
+    "scaffold",
+    "mifa",
+    "fedadam",
+    "fedyogi",
+    "clusteredfl",
+    "fdms",
+]
 PARTITIONERS = {
     "iid": "iid",
     "niid_high": "dirichlet_high",  # alpha=0.1
@@ -56,7 +67,7 @@ MODELS = ["simplecnn", "simplecnn_large", "resnet18", "resnet18_gn"]
 
 class ExperimentConfig:
     """Configuration for a single hardware experiment."""
-    
+
     def __init__(
         self,
         strategy: str,
@@ -66,7 +77,7 @@ class ExperimentConfig:
         scenario: str = "baseline",
         num_rounds: int = 50,
         num_clients: int = 20,
-        **kwargs
+        **kwargs,
     ):
         self.strategy = strategy
         self.partitioner = partitioner
@@ -76,12 +87,12 @@ class ExperimentConfig:
         self.num_rounds = num_rounds
         self.num_clients = num_clients
         self.extra_args = kwargs
-        
+
     @property
     def name(self) -> str:
         """Generate experiment name."""
         return f"{self.strategy}_{self.dataset}_{self.model}_{self.scenario}_{self.partitioner}"
-    
+
     def to_hydra_overrides(self) -> str:
         """Convert to Hydra command line overrides."""
         overrides = [
@@ -94,39 +105,39 @@ class ExperimentConfig:
             f"client.num_clients={self.num_clients}",
             "hardware=distributed",
         ]
-        
+
         # add any extra arguments
         for key, value in self.extra_args.items():
             overrides.append(f"{key}={value}")
-        
+
         return " ".join(overrides)
 
 
 def sync_code_to_devices(inventory_path: Path, dry_run: bool = False) -> bool:
     """Sync code to all devices using Ansible.
-    
+
     Args:
         inventory_path: Path to Ansible inventory file
         dry_run: If True, just print what would be run
-        
+
     Returns:
         True if sync successful, False otherwise
     """
     print(f"\n{'='*80}")
     print("Syncing code to all devices...")
     print(f"{'='*80}")
-    
+
     cmd = [
         "ansible-playbook",
         str(SYNC_CODE_PLAYBOOK),
         "-i",
         str(inventory_path),
     ]
-    
+
     if dry_run:
         print(f"[DRY RUN] Would execute: {' '.join(cmd)}")
         return True
-    
+
     try:
         result = subprocess.run(
             cmd,
@@ -146,11 +157,11 @@ def run_hardware_experiment(
     dry_run: bool = False,
 ) -> Tuple[bool, float]:
     """Run a single hardware experiment.
-    
+
     Args:
         config: Experiment configuration
         dry_run: If True, just print what would be run
-        
+
     Returns:
         tuple of (success, duration_seconds)
     """
@@ -165,7 +176,7 @@ def run_hardware_experiment(
     print(f"Rounds: {config.num_rounds}")
     print(f"Clients: {config.num_clients}")
     print(f"{'='*80}")
-    
+
     # build command
     hydra_overrides = config.to_hydra_overrides()
     ansible_cmd = [
@@ -178,13 +189,13 @@ def run_hardware_experiment(
     ]
 
     print(f"\nCommand: {' '.join(ansible_cmd)}")
-    
+
     if dry_run:
         print("[DRY RUN] Would execute the above command")
         return True, 0.0
-    
+
     start_time = time.time()
-    
+
     try:
         # run the experiment via ansible
         result = subprocess.run(
@@ -196,7 +207,7 @@ def run_hardware_experiment(
         duration = time.time() - start_time
         print(f"\n✓ Experiment completed in {duration:.1f}s ({duration/60:.1f} minutes)")
         return True, duration
-        
+
     except subprocess.CalledProcessError as e:
         duration = time.time() - start_time
         print(f"\n✗ Experiment failed after {duration:.1f}s (exit code {e.returncode})")
@@ -213,10 +224,10 @@ def generate_experiment_configs(
     datasets: Optional[List[str]] = None,
     models: Optional[List[str]] = None,
     scenarios: Optional[List[str]] = None,
-    **kwargs
+    **kwargs,
 ) -> List[ExperimentConfig]:
     """Generate experiment configurations based on filters.
-    
+
     Args:
         strategies: List of strategies to run (default: diws, diws_fhe)
         partitioners: List of partitioners (default: iid, dirichlet_high)
@@ -224,7 +235,7 @@ def generate_experiment_configs(
         models: List of models (default: resnet18)
         scenarios: List of scenarios (default: baseline)
         **kwargs: Additional arguments to pass to experiments
-        
+
     Returns:
         List of experiment configurations
     """
@@ -239,7 +250,7 @@ def generate_experiment_configs(
         models = ["resnet18"]
     if scenarios is None:
         scenarios = ["baseline"]
-    
+
     configs = []
     for strategy in strategies:
         for partitioner in partitioners:
@@ -252,10 +263,10 @@ def generate_experiment_configs(
                             dataset=dataset,
                             model=model,
                             scenario=scenario,
-                            **kwargs
+                            **kwargs,
                         )
                         configs.append(config)
-    
+
     return configs
 
 
@@ -266,7 +277,7 @@ def run_all_experiments(
     skip_failed: bool = True,
 ) -> None:
     """Run all hardware experiments sequentially.
-    
+
     Args:
         configs: List of experiment configurations to run
         sync_code: Whether to sync code before running experiments
@@ -279,7 +290,7 @@ def run_all_experiments(
     print(f"# Total experiments: {len(configs)}")
     print(f"# Inventory: {INVENTORY_PATH}")
     print(f"{'#'*80}")
-    
+
     # sync code to devices
     if sync_code:
         if not sync_code_to_devices(INVENTORY_PATH, dry_run=dry_run):
@@ -291,19 +302,19 @@ def run_all_experiments(
             time.sleep(5)
     else:
         print("\n⚠ Skipping code sync (--no-sync specified)")
-    
+
     successful = 0
     failed = 0
     total_duration = 0.0
     failed_experiments = []
-    
+
     try:
         for i, config in enumerate(configs, 1):
             print(f"\n[{i}/{len(configs)}] {config.name}")
-            
+
             success, duration = run_hardware_experiment(config, dry_run=dry_run)
             total_duration += duration
-            
+
             if success:
                 successful += 1
             else:
@@ -312,15 +323,15 @@ def run_all_experiments(
                 if not skip_failed:
                     print("\n✗ Stopping due to failure (use --skip-failed to continue)")
                     break
-            
+
             # wait between experiments to let things settle
             if not dry_run and i < len(configs):
                 print("\nWaiting 10 seconds before next experiment...")
                 time.sleep(10)
-                
+
     except KeyboardInterrupt:
         print("\n\n⚠ Interrupted by user.")
-    
+
     # print summary
     print(f"\n{'#'*80}")
     print(f"# Experiment Run Summary")
@@ -330,7 +341,7 @@ def run_all_experiments(
     print(f"# Failed: {failed}")
     print(f"# Remaining: {len(configs) - successful - failed}")
     print(f"{'#'*80}")
-    
+
     if failed_experiments:
         print("\n✗ Failed experiments:")
         for exp in failed_experiments:
@@ -368,86 +379,57 @@ Examples:
     python scripts/run_hardware_experiments.py --list
         """,
     )
-    
+
     parser.add_argument(
         "--strategy",
         nargs="+",
         choices=STRATEGIES,
-        help="Strategies to run (default: diws diws_fhe)"
+        help="Strategies to run (default: diws diws_fhe)",
     )
     parser.add_argument(
         "--partitioner",
         nargs="+",
         choices=list(PARTITIONERS.keys()),
-        help="Data partitioners (default: iid niid_high)"
+        help="Data partitioners (default: iid niid_high)",
     )
     parser.add_argument(
-        "--dataset",
-        nargs="+",
-        choices=DATASETS,
-        help="Datasets to use (default: cifar10)"
+        "--dataset", nargs="+", choices=DATASETS, help="Datasets to use (default: cifar10)"
     )
     parser.add_argument(
-        "--model",
-        nargs="+",
-        choices=MODELS,
-        help="Models to use (default: resnet18)"
+        "--model", nargs="+", choices=MODELS, help="Models to use (default: resnet18)"
     )
     parser.add_argument(
-        "--scenario",
-        nargs="+",
-        choices=SCENARIOS,
-        help="Scenarios to run (default: baseline)"
+        "--scenario", nargs="+", choices=SCENARIOS, help="Scenarios to run (default: baseline)"
     )
     parser.add_argument(
-        "--num-rounds",
-        type=int,
-        default=50,
-        help="Number of training rounds (default: 50)"
+        "--num-rounds", type=int, default=50, help="Number of training rounds (default: 50)"
     )
     parser.add_argument(
-        "--num-clients",
-        type=int,
-        default=20,
-        help="Number of clients (default: 20)"
+        "--num-clients", type=int, default=20, help="Number of clients (default: 20)"
     )
-    parser.add_argument(
-        "--no-sync",
-        action="store_true",
-        help="Skip code sync to devices"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print commands without executing"
-    )
+    parser.add_argument("--no-sync", action="store_true", help="Skip code sync to devices")
+    parser.add_argument("--dry-run", action="store_true", help="Print commands without executing")
     parser.add_argument(
         "--skip-failed",
         action="store_true",
         default=True,
-        help="Continue to next experiment on failure (default: True)"
+        help="Continue to next experiment on failure (default: True)",
     )
+    parser.add_argument("--stop-on-failure", action="store_true", help="Stop on first failure")
     parser.add_argument(
-        "--stop-on-failure",
-        action="store_true",
-        help="Stop on first failure"
+        "--list", action="store_true", help="List all experiments that would run and exit"
     )
-    parser.add_argument(
-        "--list",
-        action="store_true",
-        help="List all experiments that would run and exit"
-    )
-    
+
     args = parser.parse_args()
-    
+
     # convert partitioner names
     partitioners = None
     if args.partitioner:
         partitioners = [PARTITIONERS[p] for p in args.partitioner]
-    
+
     # handle stop-on-failure flag
     skip_failed = not args.stop_on_failure
-    
+
     # generate experiment configurations
     configs = generate_experiment_configs(
         strategies=args.strategy,
@@ -458,11 +440,11 @@ Examples:
         num_rounds=args.num_rounds,
         num_clients=args.num_clients,
     )
-    
+
     if not configs:
         print("No experiments configured.")
         return
-    
+
     # list mode
     if args.list:
         print(f"Found {len(configs)} experiments:\n")
@@ -471,7 +453,7 @@ Examples:
             print(f"    Command: python -m src.main {config.to_hydra_overrides()}")
             print()
         return
-    
+
     # run experiments
     run_all_experiments(
         configs=configs,

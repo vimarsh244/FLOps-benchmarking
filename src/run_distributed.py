@@ -170,40 +170,40 @@ def build_hydra_overrides(cfg: DictConfig) -> str:
         String of hydra overrides for Ansible playbook
     """
     overrides = []
-    
+
     # strategy
     if cfg.get("strategy") and cfg.strategy.get("name"):
         overrides.append(f"strategy={cfg.strategy.name}")
-    
+
     # partitioner
     if cfg.get("partitioner") and cfg.partitioner.get("name"):
         overrides.append(f"partitioner={cfg.partitioner.name}")
-    
+
     # dataset
     if cfg.get("dataset") and cfg.dataset.get("name"):
         overrides.append(f"dataset={cfg.dataset.name}")
-    
+
     # model
     if cfg.get("model") and cfg.model.get("name"):
         overrides.append(f"model={cfg.model.name}")
-    
+
     # scenario
     if cfg.get("scenario") and cfg.scenario.get("name"):
         overrides.append(f"scenario={cfg.scenario.name}")
-    
+
     # server settings
     if cfg.get("server"):
         if cfg.server.get("num_rounds"):
             overrides.append(f"server.num_rounds={cfg.server.num_rounds}")
-    
+
     # client settings
     if cfg.get("client"):
         if cfg.client.get("num_clients"):
             overrides.append(f"client.num_clients={cfg.client.num_clients}")
-    
+
     # always include hardware=distributed
     overrides.append("hardware=distributed")
-    
+
     return " ".join(overrides)
 
 
@@ -220,7 +220,7 @@ def run_with_ansible(
         remote_path: Path on remote devices
     """
     import json
-    
+
     logger = get_logger()
     logger.info("Running with Ansible orchestration")
 
@@ -240,7 +240,7 @@ def run_with_ansible(
             # build hydra overrides from config
             hydra_overrides = build_hydra_overrides(cfg)
             logger.info(f"Hydra overrides: {hydra_overrides}")
-            
+
             cmd = [
                 "ansible-playbook",
                 "-i",
@@ -485,6 +485,7 @@ def run_client(
         partitioner_cfg=cfg.partitioner,
         batch_size=cfg.client.batch_size,
         test_fraction=cfg.evaluation.test_fraction,
+        dataloader_cfg=cfg.training,
     )
 
     # create scenario handler
@@ -520,9 +521,9 @@ def main(cfg: DictConfig) -> None:
         cfg: Hydra configuration
     """
     import sys
-    
+
     logger = setup_logging(level="INFO")
-    
+
     mode = cfg.hardware.get("run_mode")
     if not mode:
         logger.error(
@@ -530,15 +531,15 @@ def main(cfg: DictConfig) -> None:
             "hardware.run_mode=client in your overrides."
         )
         sys.exit(1)
-    
+
     mode = str(mode).lower()
-    
+
     if mode == "server":
         logger.info("Starting in server mode")
         # optionally parse host/port from command line
         # for now, use config
         run_server(cfg)
-        
+
     elif mode == "client":
         logger.info("Starting in client mode")
         server_address = cfg.hardware.get("server_address")
@@ -553,9 +554,9 @@ def main(cfg: DictConfig) -> None:
         if partition_id is None:
             logger.error("hardware.partition_id is required for client mode")
             sys.exit(1)
-        
+
         run_client(server_address, partition_id, cfg)
-        
+
     else:
         logger.error(f"Unknown mode: {mode}. Use 'server' or 'client'")
         sys.exit(1)

@@ -39,9 +39,7 @@ def _create_context(
     fhe = _get_openfhe()
     parameters = fhe.CCParamsCKKSRNS()
     parameters.SetMultiplicativeDepth(max(1, len(coeff_mod_bit_sizes) - 2))
-    scaling_mod_size = (
-        coeff_mod_bit_sizes[1] if len(coeff_mod_bit_sizes) > 1 else global_scale_bits
-    )
+    scaling_mod_size = coeff_mod_bit_sizes[1] if len(coeff_mod_bit_sizes) > 1 else global_scale_bits
     parameters.SetScalingModSize(scaling_mod_size)
     parameters.SetFirstModSize(coeff_mod_bit_sizes[0])
     parameters.SetRingDim(poly_modulus_degree)

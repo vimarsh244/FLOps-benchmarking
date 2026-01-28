@@ -311,7 +311,9 @@ class DIWSFHE(Strategy):
                 num_active = len(active_set[label])
                 if num_active not in self.inv_num_cache:
                     inv_plain = self.context.MakeCKKSPackedPlaintext([1.0 / num_active])
-                    self.inv_num_cache[num_active] = self.context.Encrypt(self.public_key, inv_plain)
+                    self.inv_num_cache[num_active] = self.context.Encrypt(
+                        self.public_key, inv_plain
+                    )
                 inv_num_enc = self.inv_num_cache[num_active]
                 fair_share = self.context.EvalMult(target, inv_num_enc)
 
