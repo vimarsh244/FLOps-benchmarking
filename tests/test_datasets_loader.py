@@ -35,7 +35,8 @@ def _dummy_dataset(num_samples: int = 6):
 def test_get_transforms_outputs_tensor_and_normalizes():
     dataset_cfg = _dataset_cfg()
     transforms = loader.get_transforms(dataset_cfg, is_train=False)
-    sample = transforms(Image.new("L", (32, 32)))
+    grayscale_image = Image.new("L", (32, 32))
+    sample = transforms(grayscale_image)
     assert isinstance(sample, torch.Tensor)
     assert sample.shape == (3, 32, 32)
 
@@ -65,5 +66,7 @@ def test_load_data_uses_federated_dataset(monkeypatch):
     train_batch = next(iter(train_loader))
     test_batch = next(iter(test_loader))
 
+    assert "img" in train_batch
+    assert "label" in train_batch
     assert train_batch["img"].shape == (2, 3, 32, 32)
     assert test_batch["label"].shape[0] == 2

@@ -28,10 +28,12 @@ def test_get_partitioner_iid_and_dirichlet():
     assert isinstance(partitioner, IidPartitioner)
     assert partitioner.num_partitions == 3
 
-    dirichlet_cfg = _partitioner_cfg("dirichlet", alpha=100.0, seed=7)
+    dirichlet_cfg = _partitioner_cfg("dirichlet", alpha=0.5, seed=7)
     partitioner = get_partitioner(dirichlet_cfg, num_partitions=4)
     assert isinstance(partitioner, DirichletPartitioner)
-    assert partitioner._num_partitions == 4
+    partitioner.dataset = _label_dataset(num_classes=4, samples_per_class=20)
+    partitioner._min_partition_size = 1
+    assert partitioner.num_partitions == 4
 
 
 def test_get_partitioner_invalid_name():
@@ -40,6 +42,7 @@ def test_get_partitioner_invalid_name():
 
 
 def test_pathological_partitioner_creates_class_shards():
+    # PathologicalPartitioner is instantiated directly (not via get_partitioner).
     dataset = _label_dataset(num_classes=4, samples_per_class=5)
     partitioner = PathologicalPartitioner(num_partitions=2, num_classes_per_partition=2, seed=1)
     partitioner.dataset = dataset
@@ -50,6 +53,7 @@ def test_pathological_partitioner_creates_class_shards():
     assert sum(sizes) == len(dataset)
     for partition in partitions:
         assert len(set(partition["label"])) == 2
+    assert all(size == 10 for size in sizes)
 
     merged_ids = sorted([item for partition in partitions for item in partition["id"]])
     assert merged_ids == list(range(len(dataset)))
@@ -64,7 +68,7 @@ def test_quantity_skew_partitioner_distributes_samples():
     sizes = [len(partition) for partition in partitions]
 
     assert sum(sizes) == len(dataset)
-    assert max(sizes) > min(sizes)
+    assert len(set(sizes)) > 1
 
     merged_ids = sorted([item for partition in partitions for item in partition["id"]])
     assert merged_ids == list(range(len(dataset)))
