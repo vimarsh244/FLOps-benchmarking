@@ -29,7 +29,7 @@ timm>=0.9.0
 pyyaml>=6.0
 
 # FHE
-# tenseal; platform_machine == "x86_64" and python_version >= "3.9"
+openfhe
 
 # Optional: GPU monitoring (uncomment if using NVIDIA GPUs)
 # pynvml>=11.5.0

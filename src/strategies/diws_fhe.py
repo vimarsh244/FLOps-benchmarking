@@ -23,7 +23,13 @@ from flwr.server.strategy.aggregate import aggregate_inplace
 from flwr.server.strategy.strategy import Strategy
 
 from src.strategies.fedavg import CustomFedAvg
-from src.utils.fhe import create_and_save_context, get_tenseal, load_context
+from src.utils.fhe import (
+    create_and_save_context,
+    deserialize_ciphertext,
+    get_openfhe,
+    load_server_keys,
+    serialize_ciphertext,
+)
 from src.utils.wandb_logger import log_metrics
 
 
@@ -61,7 +67,8 @@ class DIWSFHE(Strategy):
         self.global_parameters: Optional[Parameters] = None
         self.label_distribution: Dict[str, Dict[int, object]] = {}
         self.context = None
-        self.ts = None
+        self.fhe = None
+        self.public_key = None
         self.cid_to_partition: Dict[str, str] = {}
         self.inv_num_cache: Dict[int, object] = {}
 
@@ -70,11 +77,11 @@ class DIWSFHE(Strategy):
 
     def initialize_parameters(self, client_manager: ClientManager) -> Optional[Parameters]:
         self.global_parameters = self.aggregator_strategy.initialize_parameters(client_manager)
-        if not self.ts:
-            self.ts = get_tenseal()
+        if not self.fhe:
+            self.fhe = get_openfhe()
         if self.context is None:
             try:
-                self.context = load_context(self.server_context_path)
+                self.context, self.public_key = load_server_keys(self.server_context_path)
             except FileNotFoundError:
                 # create public/server and private/client contexts
                 create_and_save_context(
@@ -84,7 +91,7 @@ class DIWSFHE(Strategy):
                     coeff_mod_bit_sizes=self.coeff_mod_bit_sizes,
                     global_scale_bits=self.global_scale_bits,
                 )
-                self.context = load_context(self.server_context_path)
+                self.context, self.public_key = load_server_keys(self.server_context_path)
         self.cid_to_partition = {}
         self.inv_num_cache = {}
         return self.global_parameters
@@ -134,7 +141,7 @@ class DIWSFHE(Strategy):
                     continue
                 client_dist_bytes = pickle.loads(fit_res.metrics.get("label_distribution"))
                 client_dist = {
-                    label: self.ts.ckks_vector_from(self.context, enc_bytes)
+                    label: deserialize_ciphertext(enc_bytes)
                     for label, enc_bytes in client_dist_bytes.items()
                 }
                 pid = fit_res.metrics.get("partition_id")
@@ -192,9 +199,9 @@ class DIWSFHE(Strategy):
             dist = self.label_distribution.get(pid, {})
             for label, count_enc in dist.items():
                 if label not in dropped_demand:
-                    dropped_demand[label] = count_enc.copy()
+                    dropped_demand[label] = count_enc
                 else:
-                    dropped_demand[label] += count_enc
+                    dropped_demand[label] = self.context.EvalAdd(dropped_demand[label], count_enc)
 
         if not dropped_demand:
             return
@@ -208,14 +215,18 @@ class DIWSFHE(Strategy):
                 dist = self.label_distribution.get(cid, {})
             for label, count_enc in dist.items():
                 if label not in active_stock:
-                    active_stock[label] = count_enc.copy()
+                    active_stock[label] = count_enc
                 else:
-                    active_stock[label] += count_enc
+                    active_stock[label] = self.context.EvalAdd(active_stock[label], count_enc)
 
         helper_proxy = active_client_proxies[0]
         k_min = 0.0
         k_max = 1.0
         feasibility_metrics: List[Dict[str, Scalar]] = []
+
+        zero_enc = self.context.Encrypt(
+            self.public_key, self.context.MakeCKKSPackedPlaintext([0.0])
+        )
 
         for _ in range(self.binary_search_iterations):
             k_mid = (k_min + k_max) / 2.0
@@ -223,17 +234,19 @@ class DIWSFHE(Strategy):
             labels_to_check = list(dropped_demand.keys())
 
             # blind active - dropped * k
-            k_enc = self.ts.ckks_vector(self.context, [k_mid])
+            k_enc = self.context.MakeCKKSPackedPlaintext([k_mid])
+            k_enc = self.context.Encrypt(self.public_key, k_enc)
             mask_val = random.uniform(*self.mask_range)
-            mask_enc = self.ts.ckks_vector(self.context, [mask_val])
-            zero_enc = self.ts.ckks_vector(self.context, [0.0])
+            mask_plain = self.context.MakeCKKSPackedPlaintext([mask_val])
+            mask_enc = self.context.Encrypt(self.public_key, mask_plain)
 
             for label in labels_to_check:
                 stock_total = active_stock.get(label, zero_enc)
                 dropped_total = dropped_demand[label]
-                diff = stock_total - (dropped_total * k_enc)
-                blinded = diff * mask_enc
-                blinded_checks[label] = blinded.serialize()
+                scaled = self.context.EvalMult(dropped_total, k_enc)
+                diff = self.context.EvalSub(stock_total, scaled)
+                blinded = self.context.EvalMult(diff, mask_enc)
+                blinded_checks[label] = serialize_ciphertext(blinded)
 
             ins = EvaluateIns(
                 parameters=self.global_parameters,
@@ -274,12 +287,15 @@ class DIWSFHE(Strategy):
             )
 
         final_k = k_min
-        k_final_enc = self.ts.ckks_vector(self.context, [final_k])
-        scaled_dropped_demand = {label: val * k_final_enc for label, val in dropped_demand.items()}
+        k_final_plain = self.context.MakeCKKSPackedPlaintext([final_k])
+        k_final_enc = self.context.Encrypt(self.public_key, k_final_plain)
+        scaled_dropped_demand = {
+            label: self.context.EvalMult(val, k_final_enc) for label, val in dropped_demand.items()
+        }
         dropped_demand = scaled_dropped_demand
 
         final_shares: Dict[str, Dict[int, object]] = {cid: {} for cid in active_cids}
-        remaining_demand = dropped_demand.copy()
+        remaining_demand = dict(dropped_demand)
         all_labels = set(remaining_demand.keys())
         active_set = {label: list(active_client_proxies) for label in all_labels}
 
@@ -294,11 +310,10 @@ class DIWSFHE(Strategy):
                 target = remaining_demand[label]
                 num_active = len(active_set[label])
                 if num_active not in self.inv_num_cache:
-                    self.inv_num_cache[num_active] = self.ts.ckks_vector(
-                        self.context, [1.0 / num_active]
-                    )
+                    inv_plain = self.context.MakeCKKSPackedPlaintext([1.0 / num_active])
+                    self.inv_num_cache[num_active] = self.context.Encrypt(self.public_key, inv_plain)
                 inv_num_enc = self.inv_num_cache[num_active]
-                fair_share = target * inv_num_enc
+                fair_share = self.context.EvalMult(target, inv_num_enc)
 
                 for client in active_set[label]:
                     cid = client.cid
@@ -308,14 +323,16 @@ class DIWSFHE(Strategy):
                         dist = self.label_distribution.get(cid, {})
                     stock_enc = dist.get(label)
                     if stock_enc is None:
-                        stock_enc = self.ts.ckks_vector(self.context, [0.0])
-                    else:
-                        stock_enc = stock_enc.copy()
+                        stock_enc = self.context.Encrypt(
+                            self.public_key, self.context.MakeCKKSPackedPlaintext([0.0])
+                        )
 
                     mask_val = random.uniform(*self.mask_range)
-                    mask_enc = self.ts.ckks_vector(self.context, [mask_val])
-                    blinded_diff = (fair_share - stock_enc) * mask_enc
-                    blinded_checks_per_client[cid][label] = blinded_diff.serialize()
+                    mask_plain = self.context.MakeCKKSPackedPlaintext([mask_val])
+                    mask_enc = self.context.Encrypt(self.public_key, mask_plain)
+                    diff = self.context.EvalSub(fair_share, stock_enc)
+                    blinded_diff = self.context.EvalMult(diff, mask_enc)
+                    blinded_checks_per_client[cid][label] = serialize_ciphertext(blinded_diff)
                     labels_to_check.append(label)
 
             if not labels_to_check:
@@ -356,9 +373,16 @@ class DIWSFHE(Strategy):
                             dist = self.label_distribution.get(str(cid_key), {})
                             if not dist:
                                 dist = self.label_distribution.get(cid, {})
-                            stock = dist.get(label, self.ts.ckks_vector(self.context, [0.0]))
+                            stock = dist.get(
+                                label,
+                                self.context.Encrypt(
+                                    self.public_key, self.context.MakeCKKSPackedPlaintext([0.0])
+                                ),
+                            )
                             final_shares[cid][label] = stock
-                            remaining_demand[label] -= stock
+                            remaining_demand[label] = self.context.EvalSub(
+                                remaining_demand[label], stock
+                            )
                             proxy = client_proxy_map[cid]
                             if proxy in active_set[label]:
                                 active_set[label].remove(proxy)
@@ -375,7 +399,9 @@ class DIWSFHE(Strategy):
             if not active_clients:
                 continue
             target = remaining_demand[label]
-            fair_share = target * (1.0 / len(active_clients))
+            share_plain = self.context.MakeCKKSPackedPlaintext([1.0 / len(active_clients)])
+            share_enc = self.context.Encrypt(self.public_key, share_plain)
+            fair_share = self.context.EvalMult(target, share_enc)
             for client in active_clients:
                 final_shares[client.cid][label] = fair_share
 
@@ -385,7 +411,7 @@ class DIWSFHE(Strategy):
             for client_proxy in active_client_proxies:
                 cid = client_proxy.cid
                 share_map = final_shares.get(cid, {})
-                serialized_shares = {l: v.serialize() for l, v in share_map.items()}
+                serialized_shares = {l: serialize_ciphertext(v) for l, v in share_map.items()}
                 config = {
                     "subset_distribution": pickle.dumps(serialized_shares),
                     "custom_rpc": "handle_missing_clients",
