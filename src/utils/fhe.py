@@ -11,12 +11,12 @@ def _get_openfhe():
         import openfhe as fhe
     except ImportError as exc:
         raise ImportError(
-            "openfhe is required for FHE DIWS. Install with: pip install openfhe"
+            "openfhe is required for FHE DIWS. Install with: pip install openfhe==1.4.2.0.22.4"
         ) from exc
     return fhe
 
 
-def get_openfhe():
+def get_openfhe() -> object:
     """Return the OpenFHE module with lazy import."""
     return _get_openfhe()
 
@@ -32,14 +32,18 @@ def _create_context(
     poly_modulus_degree: int,
     coeff_mod_bit_sizes: Optional[List[int]],
     global_scale_bits: int,
-):
+) -> object:
     if coeff_mod_bit_sizes is None:
         coeff_mod_bit_sizes = [60, 29, 29, 29, 29, 29, 29, 29, 60]
 
     fhe = _get_openfhe()
     parameters = fhe.CCParamsCKKSRNS()
-    parameters.SetMultiplicativeDepth(max(1, len(coeff_mod_bit_sizes) - 1))
-    parameters.SetScalingModSize(global_scale_bits)
+    parameters.SetMultiplicativeDepth(max(1, len(coeff_mod_bit_sizes) - 2))
+    scaling_mod_size = (
+        coeff_mod_bit_sizes[1] if len(coeff_mod_bit_sizes) > 1 else global_scale_bits
+    )
+    parameters.SetScalingModSize(scaling_mod_size)
+    parameters.SetFirstModSize(coeff_mod_bit_sizes[0])
     parameters.SetRingDim(poly_modulus_degree)
     parameters.SetBatchSize(max(1, min(8, poly_modulus_degree // 2)))
 
@@ -57,7 +61,7 @@ def create_and_save_context(
     coeff_mod_bit_sizes: Optional[List[int]] = None,
     global_scale_bits: int = 29,
     generate_galois_keys: bool = False,
-):
+) -> tuple[object, object]:
     """Generate CKKS context and save server/client variants."""
     fhe = _get_openfhe()
 
@@ -96,7 +100,7 @@ def create_and_save_context(
     return context, keypair
 
 
-def load_context(path: str):
+def load_context(path: str) -> object:
     """Load an OpenFHE context from disk."""
     fhe = _get_openfhe()
     if not os.path.exists(path):
@@ -107,7 +111,7 @@ def load_context(path: str):
     return context
 
 
-def load_client_keys(path: str):
+def load_client_keys(path: str) -> tuple[object, object, object]:
     """Load OpenFHE client keys and crypto context."""
     fhe = _get_openfhe()
     if not os.path.exists(f"{path}.sk") or not os.path.exists(f"{path}.pk"):
@@ -122,7 +126,7 @@ def load_client_keys(path: str):
     return context, secret_key, public_key
 
 
-def load_server_keys(path: str):
+def load_server_keys(path: str) -> tuple[object, object]:
     """Load OpenFHE server public key and eval keys for homomorphic ops."""
     fhe = _get_openfhe()
     if not os.path.exists(f"{path}.pk") or not os.path.exists(f"{path}.evalmult"):
@@ -133,8 +137,10 @@ def load_server_keys(path: str):
         raise RuntimeError("Failed to deserialize public key")
     if not context.DeserializeEvalMultKey(f"{path}.evalmult", fhe.BINARY):
         raise RuntimeError("Failed to deserialize eval mult keys")
-    if os.path.exists(f"{path}.evalrot"):
-        context.DeserializeEvalAutomorphismKey(f"{path}.evalrot", fhe.BINARY)
+    if os.path.exists(f"{path}.evalrot") and not context.DeserializeEvalAutomorphismKey(
+        f"{path}.evalrot", fhe.BINARY
+    ):
+        raise RuntimeError("Failed to deserialize eval rotation keys")
     return context, public_key
 
 
@@ -144,7 +150,7 @@ def serialize_ciphertext(ciphertext) -> bytes:
     return bytes(fhe.Serialize(ciphertext, fhe.BINARY))
 
 
-def deserialize_ciphertext(data: bytes):
+def deserialize_ciphertext(data: bytes) -> object:
     """Deserialize an OpenFHE ciphertext from bytes."""
     fhe = _get_openfhe()
     return fhe.DeserializeCiphertextString(data, fhe.BINARY)

@@ -224,6 +224,10 @@ class DIWSFHE(Strategy):
         k_max = 1.0
         feasibility_metrics: List[Dict[str, Scalar]] = []
 
+        zero_enc = self.context.Encrypt(
+            self.public_key, self.context.MakeCKKSPackedPlaintext([0.0])
+        )
+
         for _ in range(self.binary_search_iterations):
             k_mid = (k_min + k_max) / 2.0
             blinded_checks = {}
@@ -235,7 +239,6 @@ class DIWSFHE(Strategy):
             mask_val = random.uniform(*self.mask_range)
             mask_plain = self.context.MakeCKKSPackedPlaintext([mask_val])
             mask_enc = self.context.Encrypt(self.public_key, mask_plain)
-            zero_enc = self.context.Encrypt(self.public_key, self.context.MakeCKKSPackedPlaintext([0.0]))
 
             for label in labels_to_check:
                 stock_total = active_stock.get(label, zero_enc)
@@ -397,7 +400,8 @@ class DIWSFHE(Strategy):
                 continue
             target = remaining_demand[label]
             share_plain = self.context.MakeCKKSPackedPlaintext([1.0 / len(active_clients)])
-            fair_share = self.context.EvalMult(target, self.context.Encrypt(self.public_key, share_plain))
+            share_enc = self.context.Encrypt(self.public_key, share_plain)
+            fair_share = self.context.EvalMult(target, share_enc)
             for client in active_clients:
                 final_shares[client.cid][label] = fair_share
 
