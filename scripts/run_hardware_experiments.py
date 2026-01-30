@@ -18,7 +18,10 @@ Usage:
     python scripts/run_hardware_experiments.py --strategy diws --partitioner iid
     
     # run diws and diws_fhe with both iid and niid
-    python scripts/run_hardware_experiments.py --strategy diws diws_fhe --partitioner iid dirichlet_high
+    python scripts/run_hardware_experiments.py --compare-diws --compare-iid-niid
+    
+    # run using a specific config file
+    python scripts/run_hardware_experiments.py --config conf/hardware_experiments/diws_iid.yaml
     
     # dry run to see what would be executed
     python scripts/run_hardware_experiments.py --dry-run
@@ -60,6 +63,11 @@ PARTITIONERS = {
     "niid_medium": "dirichlet_medium",  # alpha=0.5
     "niid_low": "dirichlet",  # alpha=1.0
 }
+NIID_LEVELS = {
+    "high": "niid_high",
+    "medium": "niid_medium",
+    "low": "niid_low",
+}
 SCENARIOS = ["baseline", "node_drop", "node_drop_standard"]
 DATASETS = ["cifar10", "cifar100", "tiny_imagenet"]
 MODELS = ["simplecnn", "simplecnn_large", "resnet18", "resnet18_gn"]
@@ -70,13 +78,20 @@ class ExperimentConfig:
 
     def __init__(
         self,
-        strategy: str,
-        partitioner: str,
-        dataset: str = "cifar10",
-        model: str = "resnet18",
-        scenario: str = "baseline",
+        strategy: Optional[str],
+        partitioner: Optional[str],
+        dataset: Optional[str] = "cifar10",
+        model: Optional[str] = "resnet18",
+        scenario: Optional[str] = "baseline",
         num_rounds: int = 50,
         num_clients: int = 20,
+        config_path: Optional[str] = None,
+        config_name: Optional[str] = None,
+        logging_backend: Optional[str] = "wandb",
+        wandb_project: Optional[str] = None,
+        wandb_run_name: Optional[str] = None,
+        wandb_mode: Optional[str] = None,
+        wandb_tags: Optional[List[str]] = None,
         **kwargs,
     ):
         self.strategy = strategy
@@ -86,31 +101,129 @@ class ExperimentConfig:
         self.scenario = scenario
         self.num_rounds = num_rounds
         self.num_clients = num_clients
+        self.config_path = config_path
+        self.config_name = config_name
+        self.logging_backend = logging_backend
+        self.wandb_project = wandb_project
+        self.wandb_run_name = wandb_run_name
+        self.wandb_mode = wandb_mode
+        self.wandb_tags = wandb_tags or []
         self.extra_args = kwargs
 
     @property
     def name(self) -> str:
         """Generate experiment name."""
-        return f"{self.strategy}_{self.dataset}_{self.model}_{self.scenario}_{self.partitioner}"
+        parts = []
+        if self.config_name:
+            parts.append(self.config_name)
+        if self.strategy:
+            parts.append(self.strategy)
+        if self.dataset:
+            parts.append(self.dataset)
+        if self.model:
+            parts.append(self.model)
+        if self.scenario:
+            parts.append(self.scenario)
+        if self.partitioner:
+            parts.append(self.partitioner)
+        return "_".join(parts) if parts else "experiment"
 
     def to_hydra_overrides(self) -> str:
         """Convert to Hydra command line overrides."""
-        overrides = [
-            f"strategy={self.strategy}",
-            f"partitioner={self.partitioner}",
-            f"dataset={self.dataset}",
-            f"model={self.model}",
-            f"scenario={self.scenario}",
-            f"server.num_rounds={self.num_rounds}",
-            f"client.num_clients={self.num_clients}",
-            "hardware=distributed",
-        ]
+        overrides: List[str] = []
+        if self.config_path:
+            overrides.append(f"--config-path {self.config_path}")
+        if self.config_name:
+            overrides.append(f"--config-name {self.config_name}")
+        if self.strategy:
+            overrides.append(f"strategy={self.strategy}")
+        if self.partitioner:
+            overrides.append(f"partitioner={self.partitioner}")
+        if self.dataset:
+            overrides.append(f"dataset={self.dataset}")
+        if self.model:
+            overrides.append(f"model={self.model}")
+        if self.scenario:
+            overrides.append(f"scenario={self.scenario}")
+        overrides.extend(
+            [
+                f"server.num_rounds={self.num_rounds}",
+                f"client.num_clients={self.num_clients}",
+                "hardware=distributed",
+            ]
+        )
+
+        if self.logging_backend and self.logging_backend != "none":
+            overrides.append(f"logging={self.logging_backend}")
+            if self.logging_backend == "wandb":
+                if self.wandb_project:
+                    overrides.append(
+                        f"logging.wandb.project={_format_override_value(self.wandb_project)}"
+                    )
+                if self.wandb_run_name:
+                    overrides.append(
+                        f"logging.wandb.run_name={_format_override_value(self.wandb_run_name)}"
+                    )
+                if self.wandb_mode:
+                    overrides.append(f"logging.wandb.mode={self.wandb_mode}")
+                if self.wandb_tags:
+                    tags = ",".join(
+                        _format_override_value(tag) for tag in self.wandb_tags
+                    )
+                    overrides.append(f"logging.wandb.tags=[{tags}]")
 
         # add any extra arguments
         for key, value in self.extra_args.items():
             overrides.append(f"{key}={value}")
 
         return " ".join(overrides)
+
+    def to_ansible_command(self) -> str:
+        hydra_overrides = self.to_hydra_overrides()
+        ansible_cmd = [
+            "ansible-playbook",
+            str(RUN_EXPERIMENT_PLAYBOOK),
+            "-i",
+            str(INVENTORY_PATH),
+            "-e",
+            json.dumps({"hydra_overrides": hydra_overrides}),
+        ]
+        return " ".join(ansible_cmd)
+
+
+def _format_override_value(value: str) -> str:
+    """Format override value to be shell-safe for hydra."""
+    if any(ch.isspace() for ch in value) or any(ch in value for ch in ["'", '"']):
+        if "'" in value and '"' not in value:
+            return f'"{value}"'
+        if '"' in value and "'" not in value:
+            return f"'{value}'"
+        escaped = value.replace('"', '\\"')
+        return f'"{escaped}"'
+    return value
+
+
+def _normalize_overrides(values: Optional[List[str]]) -> List[Optional[str]]:
+    return values if values else [None]
+
+
+def _resolve_config_files(config_files: List[str]) -> List[Tuple[str, str]]:
+    resolved = []
+    for config_file in config_files:
+        path = Path(config_file)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+        config_name = path.stem
+        config_path = path.parent
+        try:
+            config_path = config_path.relative_to(PROJECT_ROOT)
+        except ValueError:
+            print(
+                f"⚠ Config path {config_path} is outside the repo; "
+                "ensure it exists on remote devices."
+            )
+        resolved.append((str(config_path), config_name))
+    return resolved
 
 
 def sync_code_to_devices(inventory_path: Path, dry_run: bool = False) -> bool:
@@ -224,6 +337,12 @@ def generate_experiment_configs(
     datasets: Optional[List[str]] = None,
     models: Optional[List[str]] = None,
     scenarios: Optional[List[str]] = None,
+    config_files: Optional[List[str]] = None,
+    logging_backend: Optional[str] = "wandb",
+    wandb_project: Optional[str] = None,
+    wandb_run_name: Optional[str] = None,
+    wandb_mode: Optional[str] = None,
+    wandb_tags: Optional[List[str]] = None,
     **kwargs,
 ) -> List[ExperimentConfig]:
     """Generate experiment configurations based on filters.
@@ -240,32 +359,42 @@ def generate_experiment_configs(
         List of experiment configurations
     """
     # defaults for hardware experiments
-    if strategies is None:
+    use_defaults = not config_files
+    if strategies is None and use_defaults:
         strategies = ["diws", "diws_fhe"]
-    if partitioners is None:
+    if partitioners is None and use_defaults:
         partitioners = ["iid", "dirichlet_high"]
-    if datasets is None:
+    if datasets is None and use_defaults:
         datasets = ["cifar10"]
-    if models is None:
+    if models is None and use_defaults:
         models = ["resnet18"]
-    if scenarios is None:
+    if scenarios is None and use_defaults:
         scenarios = ["baseline"]
 
     configs = []
-    for strategy in strategies:
-        for partitioner in partitioners:
-            for dataset in datasets:
-                for model in models:
-                    for scenario in scenarios:
-                        config = ExperimentConfig(
-                            strategy=strategy,
-                            partitioner=partitioner,
-                            dataset=dataset,
-                            model=model,
-                            scenario=scenario,
-                            **kwargs,
-                        )
-                        configs.append(config)
+    resolved_configs = _resolve_config_files(config_files) if config_files else [(None, None)]
+    for config_path, config_name in resolved_configs:
+        for strategy in _normalize_overrides(strategies):
+            for partitioner in _normalize_overrides(partitioners):
+                for dataset in _normalize_overrides(datasets):
+                    for model in _normalize_overrides(models):
+                        for scenario in _normalize_overrides(scenarios):
+                            config = ExperimentConfig(
+                                strategy=strategy,
+                                partitioner=partitioner,
+                                dataset=dataset,
+                                model=model,
+                                scenario=scenario,
+                                config_path=config_path,
+                                config_name=config_name,
+                                logging_backend=logging_backend,
+                                wandb_project=wandb_project,
+                                wandb_run_name=wandb_run_name,
+                                wandb_mode=wandb_mode,
+                                wandb_tags=wandb_tags,
+                                **kwargs,
+                            )
+                            configs.append(config)
 
     return configs
 
@@ -361,10 +490,13 @@ Examples:
     python scripts/run_hardware_experiments.py --strategy diws --partitioner iid
     
     # run DIWS-FHE with both IID and NIID (high skew)
-    python scripts/run_hardware_experiments.py --strategy diws_fhe --partitioner iid dirichlet_high
+    python scripts/run_hardware_experiments.py --strategy diws_fhe --partitioner iid niid_high
     
     # run with different dataset and model
     python scripts/run_hardware_experiments.py --dataset cifar100 --model resnet18_gn
+    
+    # compare diws vs diws_fhe on iid vs niid (medium) for baseline and node_drop_standard
+    python scripts/run_hardware_experiments.py --compare-diws --compare-iid-niid --compare-scenarios
     
     # dry run to see what would be executed
     python scripts/run_hardware_experiments.py --dry-run
@@ -393,6 +525,22 @@ Examples:
         help="Data partitioners (default: iid niid_high)",
     )
     parser.add_argument(
+        "--compare-diws",
+        action="store_true",
+        help="Run diws and diws_fhe (overrides --strategy)",
+    )
+    parser.add_argument(
+        "--compare-iid-niid",
+        action="store_true",
+        help="Run iid and niid partitioners (overrides --partitioner)",
+    )
+    parser.add_argument(
+        "--niid-levels",
+        nargs="+",
+        choices=["high", "medium", "low", "all"],
+        help="NIID levels for --compare-iid-niid (default: medium)",
+    )
+    parser.add_argument(
         "--dataset", nargs="+", choices=DATASETS, help="Datasets to use (default: cifar10)"
     )
     parser.add_argument(
@@ -401,6 +549,37 @@ Examples:
     parser.add_argument(
         "--scenario", nargs="+", choices=SCENARIOS, help="Scenarios to run (default: baseline)"
     )
+    parser.add_argument(
+        "--compare-scenarios",
+        action="store_true",
+        help="Run baseline and node_drop_standard (overrides --scenario)",
+    )
+    parser.add_argument(
+        "--include-node-drop",
+        action="store_true",
+        help="Include node_drop with --compare-scenarios",
+    )
+    parser.add_argument(
+        "--config",
+        "--config-file",
+        nargs="+",
+        dest="config_files",
+        help="Hydra config file(s) to run (e.g., conf/hardware_experiments/diws_iid.yaml)",
+    )
+    parser.add_argument(
+        "--logging",
+        choices=["wandb", "offline", "none"],
+        default="wandb",
+        help="Logging backend override (default: wandb)",
+    )
+    parser.add_argument("--wandb-project", help="W&B project name override")
+    parser.add_argument("--wandb-run-name", help="W&B run name override")
+    parser.add_argument(
+        "--wandb-mode",
+        choices=["online", "offline"],
+        help="W&B mode override",
+    )
+    parser.add_argument("--wandb-tags", nargs="+", help="W&B tags override")
     parser.add_argument(
         "--num-rounds", type=int, default=50, help="Number of training rounds (default: 50)"
     )
@@ -422,23 +601,56 @@ Examples:
 
     args = parser.parse_args()
 
-    # convert partitioner names
+    # resolve strategies
+    strategies = args.strategy
+    if args.compare_diws:
+        if args.strategy:
+            print("⚠ --compare-diws specified; ignoring --strategy")
+        strategies = ["diws", "diws_fhe"]
+
+    # resolve partitioners
     partitioners = None
-    if args.partitioner:
-        partitioners = [PARTITIONERS[p] for p in args.partitioner]
+    if args.compare_iid_niid:
+        if args.partitioner:
+            print("⚠ --compare-iid-niid specified; ignoring --partitioner")
+        levels = args.niid_levels or ["medium"]
+        if "all" in levels:
+            levels = ["high", "medium", "low"]
+        niid_keys = [NIID_LEVELS[level] for level in levels]
+        partitioners = ["iid"] + niid_keys
+    elif args.partitioner:
+        partitioners = args.partitioner
+
+    if partitioners:
+        partitioners = [PARTITIONERS[p] for p in partitioners]
 
     # handle stop-on-failure flag
     skip_failed = not args.stop_on_failure
 
+    # resolve scenarios
+    scenarios = args.scenario
+    if args.compare_scenarios:
+        if args.scenario:
+            print("⚠ --compare-scenarios specified; ignoring --scenario")
+        scenarios = ["baseline", "node_drop_standard"]
+        if args.include_node_drop and "node_drop" not in scenarios:
+            scenarios.append("node_drop")
+
     # generate experiment configurations
     configs = generate_experiment_configs(
-        strategies=args.strategy,
+        strategies=strategies,
         partitioners=partitioners,
         datasets=args.dataset,
         models=args.model,
-        scenarios=args.scenario,
+        scenarios=scenarios,
+        config_files=args.config_files,
         num_rounds=args.num_rounds,
         num_clients=args.num_clients,
+        logging_backend=args.logging,
+        wandb_project=args.wandb_project,
+        wandb_run_name=args.wandb_run_name,
+        wandb_mode=args.wandb_mode,
+        wandb_tags=args.wandb_tags,
     )
 
     if not configs:
@@ -450,7 +662,8 @@ Examples:
         print(f"Found {len(configs)} experiments:\n")
         for config in configs:
             print(f"  {config.name}")
-            print(f"    Command: python -m src.main {config.to_hydra_overrides()}")
+            print(f"    Hydra overrides: {config.to_hydra_overrides()}")
+            print(f"    Ansible command: {config.to_ansible_command()}")
             print()
         return
 

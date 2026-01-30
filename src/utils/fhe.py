@@ -11,7 +11,10 @@ def _get_openfhe():
         import openfhe as fhe
     except ImportError as exc:
         raise ImportError(
-            "openfhe is required for FHE DIWS. Install with: pip install openfhe==1.4.2.0.22.4"
+            "openfhe is required for FHE DIWS. "
+            "On x86_64 Ubuntu 20.04 use: pip install openfhe==1.2.3.1.20.4. "
+            "On ARM (Jetson/Raspberry Pi) build from source with: "
+            "ansible-playbook deployment/ansible/install_openfhe_arm.yml -i deployment/ansible/inventory.yml"
         ) from exc
     return fhe
 
