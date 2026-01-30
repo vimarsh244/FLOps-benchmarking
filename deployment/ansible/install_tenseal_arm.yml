@@ -1,0 +1,73 @@
+---
+# Build and install TenSEAL from source on ARM devices
+
+- name: Install TenSEAL on ARM clients
+  hosts: clients
+  become: false
+
+  vars:
+    venv_python: "{{ python_env | default('~/envs/flops/bin/python') }}"
+    venv_path: "{{ venv_python | dirname | dirname }}"
+    tenseal_repo: "https://github.com/OpenMined/TenSEAL.git"
+    tenseal_src_dir: "~/tenseal-src"
+    proxy_url: "{{ flops_proxy_url | default('') }}"
+
+  tasks:
+    - name: Skip non-ARM hosts
+      debug:
+        msg: "Skipping {{ inventory_hostname }} (arch={{ ansible_architecture }})"
+      when: ansible_architecture not in ["aarch64", "arm64"]
+
+    - name: Install system build dependencies
+      become: true
+      apt:
+        name:
+          - git
+          - build-essential
+          - cmake
+          - python3-dev
+          - libssl-dev
+          - libffi-dev
+          - libprotobuf-dev
+          - protobuf-compiler
+        state: present
+        update_cache: yes
+      when:
+        - ansible_os_family == "Debian"
+        - ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Ensure venv has build tools
+      command: "{{ venv_python }} -m pip install --upgrade pip setuptools wheel"
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Clone TenSEAL with submodules
+      git:
+        repo: "{{ tenseal_repo }}"
+        dest: "{{ tenseal_src_dir }}"
+        update: yes
+        recursive: yes
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Install TenSEAL from source (no proxy)
+      command: "{{ venv_python }} -m pip install ."
+      args:
+        chdir: "{{ tenseal_src_dir }}"
+      when:
+        - ansible_architecture in ["aarch64", "arm64"]
+        - proxy_url | length == 0
+
+    - name: Install TenSEAL from source (with proxy)
+      command: "{{ venv_python }} -m pip install . --proxy {{ proxy_url }} --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org"
+      args:
+        chdir: "{{ tenseal_src_dir }}"
+      environment:
+        http_proxy: "{{ proxy_url }}"
+        https_proxy: "{{ proxy_url }}"
+      when:
+        - ansible_architecture in ["aarch64", "arm64"]
+        - proxy_url | length > 0
+
+    - name: Display install status
+      debug:
+        msg: "TenSEAL installed in {{ venv_path }} on {{ inventory_hostname }}"
+      when: ansible_architecture in ["aarch64", "arm64"]

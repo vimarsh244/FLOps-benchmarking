@@ -22,7 +22,12 @@ from flwr.common import NDArrays, Scalar
 
 from src.clients.base_client import FlowerClient
 from src.clients.subset_client_trainer import get_subset_client_trainer
-from src.utils.fhe import get_tenseal, load_context
+from src.utils.fhe import (
+    deserialize_ciphertext,
+    get_openfhe,
+    load_client_keys,
+    serialize_ciphertext,
+)
 
 
 class FheDiwsClient(FlowerClient):
@@ -37,9 +42,11 @@ class FheDiwsClient(FlowerClient):
         self.feasibility_epsilon = float(fhe_cfg.get("feasibility_epsilon", 0.01))
         self.context_load_retries = int(fhe_cfg.get("context_load_retries", 20))
         self.context_load_delay_s = float(fhe_cfg.get("context_load_delay_s", 0.5))
-        self.ts = get_tenseal()
+        self.fhe = get_openfhe()
         # load private context for encrypt/decrypt
-        self.context = self._load_context_with_retry(self.client_context_path)
+        self.context, self.secret_key, self.public_key = self._load_context_with_retry(
+            self.client_context_path
+        )
 
     def _get_process_stats(self):
         if not PSUTIL_AVAILABLE:
@@ -68,13 +75,13 @@ class FheDiwsClient(FlowerClient):
         last_error = None
         for _ in range(self.context_load_retries):
             try:
-                return load_context(path)
+                return load_client_keys(path)
             except FileNotFoundError as exc:
                 last_error = exc
                 time.sleep(self.context_load_delay_s)
         if last_error:
             raise last_error
-        return load_context(path)
+        return load_client_keys(path)
 
     def get_label_distribution(self) -> Dict[int, int]:
         label_counter = Counter()
@@ -95,7 +102,10 @@ class FheDiwsClient(FlowerClient):
             start_time, cpu_start, mem_start = self._start_resource_timer()
 
         for label, enc_data in encrypted_target.items():
-            val = self.ts.ckks_vector_from(self.context, enc_data).decrypt()[0]
+            ciphertext = deserialize_ciphertext(enc_data)
+            plaintext = self.context.Decrypt(ciphertext, self.secret_key)
+            plaintext.SetLength(1)
+            val = plaintext.GetCKKSPackedValue()[0].real
             target_distribution[int(label)] = max(0, int(round(val)))
 
         if self.fhe_metrics_enabled:
@@ -137,9 +147,9 @@ class FheDiwsClient(FlowerClient):
                 start_time, cpu_start, mem_start = self._start_resource_timer()
 
             for label, count in label_distribution.items():
-                encrypted_dist[label] = self.ts.ckks_vector(
-                    self.context, [float(count)]
-                ).serialize()
+                plaintext = self.context.MakeCKKSPackedPlaintext([float(count)])
+                ciphertext = self.context.Encrypt(self.public_key, plaintext)
+                encrypted_dist[label] = serialize_ciphertext(ciphertext)
 
             if self.fhe_metrics_enabled:
                 enc_metrics = self._finish_resource_timer(
@@ -168,7 +178,10 @@ class FheDiwsClient(FlowerClient):
                 start_time, cpu_start, mem_start = self._start_resource_timer()
 
             for label, enc_diff in blinded_diff_map.items():
-                val = self.ts.ckks_vector_from(self.context, enc_diff).decrypt()[0]
+                ciphertext = deserialize_ciphertext(enc_diff)
+                plaintext = self.context.Decrypt(ciphertext, self.secret_key)
+                plaintext.SetLength(1)
+                val = plaintext.GetCKKSPackedValue()[0].real
                 is_capped_map[label] = val > 0
 
             if self.fhe_metrics_enabled:
@@ -190,7 +203,10 @@ class FheDiwsClient(FlowerClient):
                 start_time, cpu_start, mem_start = self._start_resource_timer()
 
             for _, enc_val in blinded_checks_map.items():
-                val = self.ts.ckks_vector_from(self.context, enc_val).decrypt()[0]
+                ciphertext = deserialize_ciphertext(enc_val)
+                plaintext = self.context.Decrypt(ciphertext, self.secret_key)
+                plaintext.SetLength(1)
+                val = plaintext.GetCKKSPackedValue()[0].real
                 if val < -self.feasibility_epsilon:
                     is_feasible = False
                     break

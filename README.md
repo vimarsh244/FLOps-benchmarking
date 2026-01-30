@@ -161,6 +161,19 @@ Substitutes dropped client updates based on label distribution.
 python -m src.main strategy=diws
 ```
 
+### DIWS (FHE)
+Encrypted DIWS uses OpenFHE (openfhe-python). Install dependencies and run:
+
+```bash
+python -m src.main strategy=diws_fhe
+```
+
+On ARM devices (Jetson/Raspberry Pi), build OpenFHE from source before running:
+
+```bash
+ansible-playbook deployment/ansible/install_openfhe_arm.yml -i deployment/ansible/inventory.yml
+```
+
 ### FedOpt (FedAdam, FedYogi)
 Adaptive server-side optimization.
 
@@ -306,4 +319,3 @@ FLOps-benchmarking/
 ├── requirements.txt
 └── README.md
 ```
-
