@@ -1,0 +1,9 @@
+# LSTM Model Configuration for Character-Level Language Modeling
+name: lstm
+_target_: src.models.registry.get_model
+
+# Model architecture parameters
+embed_dim: 64
+hidden_dim: 256
+num_layers: 2
+dropout: 0.2

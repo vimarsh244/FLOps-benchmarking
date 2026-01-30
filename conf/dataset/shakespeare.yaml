@@ -1,0 +1,23 @@
+# Shakespeare Character-Level Language Modeling Dataset Configuration
+name: shakespeare
+_target_: src.datasets.nlp_loader.load_text_data
+
+# Dataset identifier for huggingface/flwr-datasets
+dataset_name: tiny_shakespeare
+
+# Task type - used to select appropriate client
+task_type: char_lm
+
+# Vocabulary and sequence configuration
+vocab_size: 65     # Unique characters in Shakespeare corpus
+num_classes: 65    # Same as vocab_size (for model output)
+sequence_length: 80
+
+# Keys used in the dataset
+text_key: text
+label_key: null    # LM uses shifted input as target
+
+# Placeholder values for compatibility with CV-focused code
+# (these are not used for NLP but some code paths may reference them)
+image_size: 0
+channels: 0

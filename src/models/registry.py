@@ -7,6 +7,8 @@ from omegaconf import DictConfig
 from src.models.simple_cnn import SimpleCNN, SimpleCNNLarge
 from src.models.resnet import ResNet18, ResNet34, ResNet50, ResNetCIFAR
 from src.models.vit import ViT, ViTSmall
+from src.models.lstm import CharLSTM
+from src.models.transformer import CharTransformer
 
 
 # registry mapping model names to classes
@@ -22,6 +24,9 @@ MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
     "resnet_cifar": ResNetCIFAR,
     "vit": ViT,
     "vit_small": ViTSmall,
+    # NLP models
+    "lstm": CharLSTM,
+    "char_transformer": CharTransformer,
 }
 
 
@@ -84,6 +89,18 @@ def get_model(
         for key in ["patch_size", "embed_dim", "depth", "num_heads"]:
             if key in kwargs:
                 model_kwargs[key] = kwargs[key]
+    elif model_name == "lstm":
+        # LSTM for character-level LM
+        model_kwargs["vocab_size"] = kwargs.get("vocab_size", num_classes)
+        for key in ["embed_dim", "hidden_dim", "num_layers", "dropout"]:
+            if key in kwargs:
+                model_kwargs[key] = kwargs[key]
+    elif model_name == "char_transformer":
+        # Transformer for character-level LM
+        model_kwargs["vocab_size"] = kwargs.get("vocab_size", num_classes)
+        for key in ["embed_dim", "num_heads", "num_layers", "ff_dim", "dropout", "max_seq_len"]:
+            if key in kwargs:
+                model_kwargs[key] = kwargs[key]
     
     # add any remaining kwargs
     for key, value in kwargs.items():
@@ -106,12 +123,19 @@ def get_model_from_config(
     Returns:
         Initialized model
     """
+    # Build extra kwargs from model config
+    extra_kwargs = {k: v for k, v in model_cfg.items() if k not in ["name", "_target_", "pretrained"]}
+    
+    # For NLP models, pass vocab_size from dataset config
+    if dataset_cfg.get("vocab_size", 0) > 0:
+        extra_kwargs["vocab_size"] = dataset_cfg.vocab_size
+    
     return get_model(
         model_name=model_cfg.name,
         num_classes=dataset_cfg.num_classes,
-        in_channels=dataset_cfg.channels,
-        image_size=dataset_cfg.image_size,
+        in_channels=dataset_cfg.get("channels", 0),
+        image_size=dataset_cfg.get("image_size", 0),
         pretrained=model_cfg.get("pretrained", False),
-        **{k: v for k, v in model_cfg.items() if k not in ["name", "_target_", "pretrained"]},
+        **extra_kwargs,
     )
 

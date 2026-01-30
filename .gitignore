@@ -22,7 +22,8 @@
 
 wandb/
 outputs/
-
+*.egg-info/
+Miniconda*.sh
 
 .env
 
