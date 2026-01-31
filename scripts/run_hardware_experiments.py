@@ -42,6 +42,7 @@ from typing import List, Optional, Dict, Any, Tuple
 PROJECT_ROOT = Path(__file__).parent.parent
 INVENTORY_PATH = PROJECT_ROOT / "deployment" / "ansible" / "inventory.yml"
 SYNC_CODE_PLAYBOOK = PROJECT_ROOT / "deployment" / "ansible" / "sync_code.yml"
+SYNC_FHE_CONTEXT_PLAYBOOK = PROJECT_ROOT / "deployment" / "ansible" / "sync_fhe_context.yml"
 RUN_EXPERIMENT_PLAYBOOK = PROJECT_ROOT / "deployment" / "ansible" / "run_experiment.yml"
 
 # available options
@@ -167,9 +168,7 @@ class ExperimentConfig:
                 if self.wandb_mode:
                     overrides.append(f"logging.wandb.mode={self.wandb_mode}")
                 if self.wandb_tags:
-                    tags = ",".join(
-                        _format_override_value(tag) for tag in self.wandb_tags
-                    )
+                    tags = ",".join(_format_override_value(tag) for tag in self.wandb_tags)
                     overrides.append(f"logging.wandb.tags=[{tags}]")
 
         # add any extra arguments
@@ -224,6 +223,49 @@ def _resolve_config_files(config_files: List[str]) -> List[Tuple[str, str]]:
             )
         resolved.append((str(config_path), config_name))
     return resolved
+
+
+def sync_fhe_context_to_devices(inventory_path: Path, dry_run: bool = False) -> bool:
+    """Sync FHE context files to all client devices using Ansible.
+
+    This is required before running diws_fhe experiments in distributed mode.
+    The server generates the FHE context and this function distributes the
+    client_context.pkl to all clients.
+
+    Args:
+        inventory_path: Path to Ansible inventory file
+        dry_run: If True, just print what would be run
+
+    Returns:
+        True if sync successful, False otherwise
+    """
+    print(f"\n{'='*80}")
+    print("Syncing FHE context to all client devices...")
+    print(f"{'='*80}")
+
+    cmd = [
+        "ansible-playbook",
+        str(SYNC_FHE_CONTEXT_PLAYBOOK),
+        "-i",
+        str(inventory_path),
+    ]
+
+    if dry_run:
+        print(f"[DRY RUN] Would execute: {' '.join(cmd)}")
+        return True
+
+    try:
+        subprocess.run(
+            cmd,
+            cwd=PROJECT_ROOT,
+            check=True,
+            capture_output=False,  # let output stream to console
+        )
+        print("-> FHE context sync completed successfully")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"-> FHE context sync failed (exit code {e.returncode})")
+        return False
 
 
 def sync_code_to_devices(inventory_path: Path, dry_run: bool = False) -> bool:
@@ -431,6 +473,17 @@ def run_all_experiments(
             time.sleep(5)
     else:
         print("\n⚠ Skipping code sync (--no-sync specified)")
+
+    # check if any experiment uses diws_fhe and sync FHE context if needed
+    uses_fhe = any(c.strategy == "diws_fhe" for c in configs)
+    if uses_fhe:
+        print("\n ->-> Detected diws_fhe strategy - syncing FHE context to clients...")
+        if not sync_fhe_context_to_devices(INVENTORY_PATH, dry_run=dry_run):
+            print("\n-> FHE context sync failed. Aborting.")
+            return
+        if not dry_run:
+            print("\nWaiting 3 seconds for FHE context sync to settle...")
+            time.sleep(3)
 
     successful = 0
     failed = 0

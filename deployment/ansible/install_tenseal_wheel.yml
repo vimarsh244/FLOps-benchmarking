@@ -1,0 +1,46 @@
+---
+# Install TenSEAL from pre-built wheel on ARM devices
+
+- name: Install TenSEAL wheel on ARM clients
+  hosts: clients
+  become: false
+
+  vars:
+    venv_python: "{{ python_env | default('~/envs/flops/bin/python') }}"
+    repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+    # Use cp38 wheel for vagators (Jetson), cp313 wheel for cortalims (RPi)
+    wheel_filename: "{{ 'tenseal-0.3.16-cp38-cp38-linux_aarch64.whl' if 'vagator' in inventory_hostname else 'tenseal-0.3.16-cp313-cp313-linux_aarch64.whl' }}"
+    local_wheel_path: "{{ '../../tenseal/TenSEAL/wheelhouse/' if 'vagator' in inventory_hostname else '../../tenseal/' }}{{ wheel_filename }}"
+    remote_tmp_dir: "{{ repo_path }}/tmp"
+    remote_wheel_path: "{{ remote_tmp_dir }}/{{ wheel_filename }}"
+
+  tasks:
+    - name: Create tmp directory on remote
+      file:
+        path: "{{ remote_tmp_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy TenSEAL wheel to remote
+      copy:
+        src: "{{ local_wheel_path }}"
+        dest: "{{ remote_wheel_path }}"
+        mode: '0644'
+
+    - name: Install TenSEAL wheel in virtual environment
+      command: "{{ venv_python }} -m pip install {{ remote_wheel_path }} --force-reinstall"
+      register: pip_result
+      changed_when: "'Successfully installed' in pip_result.stdout"
+
+    - name: Display installation result
+      debug:
+        msg: "TenSEAL installed on {{ inventory_hostname }}: {{ pip_result.stdout_lines[-1] | default('completed') }}"
+
+    - name: Verify TenSEAL installation
+      command: "{{ venv_python }} -c 'import tenseal; print(tenseal.__version__)'"
+      register: verify_result
+      ignore_errors: yes
+
+    - name: Show TenSEAL version
+      debug:
+        msg: "TenSEAL version on {{ inventory_hostname }}: {{ verify_result.stdout | default('verification failed') }}"

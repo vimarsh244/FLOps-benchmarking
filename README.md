@@ -168,12 +168,6 @@ Encrypted DIWS uses OpenFHE (openfhe-python). Install dependencies and run:
 python -m src.main strategy=diws_fhe
 ```
 
-On ARM devices (Jetson/Raspberry Pi), build OpenFHE from source before running:
-
-```bash
-ansible-playbook deployment/ansible/install_openfhe_arm.yml -i deployment/ansible/inventory.yml
-```
-
 ### FedOpt (FedAdam, FedYogi)
 Adaptive server-side optimization.
 

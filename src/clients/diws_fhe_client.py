@@ -1,4 +1,4 @@
-"""Client implementation for FHE-enabled DIWS."""
+"""Client implementation for FHE-enabled DIWS using TenSEAL."""
 
 from __future__ import annotations
 
@@ -22,16 +22,11 @@ from flwr.common import NDArrays, Scalar
 
 from src.clients.base_client import FlowerClient
 from src.clients.subset_client_trainer import get_subset_client_trainer
-from src.utils.fhe import (
-    deserialize_ciphertext,
-    get_openfhe,
-    load_client_keys,
-    serialize_ciphertext,
-)
+from src.utils.fhe import get_tenseal, load_client_context
 
 
 class FheDiwsClient(FlowerClient):
-    """Flower client with FHE-enabled DIWS hooks."""
+    """Flower client with FHE-enabled DIWS hooks using TenSEAL."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -42,11 +37,9 @@ class FheDiwsClient(FlowerClient):
         self.feasibility_epsilon = float(fhe_cfg.get("feasibility_epsilon", 0.01))
         self.context_load_retries = int(fhe_cfg.get("context_load_retries", 20))
         self.context_load_delay_s = float(fhe_cfg.get("context_load_delay_s", 0.5))
-        self.fhe = get_openfhe()
-        # load private context for encrypt/decrypt
-        self.context, self.secret_key, self.public_key = self._load_context_with_retry(
-            self.client_context_path
-        )
+        self.ts = get_tenseal()
+        # load private context for encrypt/decrypt (TenSEAL context includes secret key)
+        self.context = self._load_context_with_retry(self.client_context_path)
 
     def _get_process_stats(self):
         if not PSUTIL_AVAILABLE:
@@ -75,13 +68,13 @@ class FheDiwsClient(FlowerClient):
         last_error = None
         for _ in range(self.context_load_retries):
             try:
-                return load_client_keys(path)
+                return load_client_context(path)
             except FileNotFoundError as exc:
                 last_error = exc
                 time.sleep(self.context_load_delay_s)
         if last_error:
             raise last_error
-        return load_client_keys(path)
+        return load_client_context(path)
 
     def get_label_distribution(self) -> Dict[int, int]:
         label_counter = Counter()
@@ -93,7 +86,7 @@ class FheDiwsClient(FlowerClient):
     def _handle_missing_clients(
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[NDArrays, int, Dict[str, Scalar]]:
-        # decrypt target subset distribution
+        # decrypt target subset distribution using TenSEAL
         encrypted_target = pickle.loads(config["subset_distribution"])
         target_distribution: Dict[int, int] = {}
 
@@ -102,10 +95,8 @@ class FheDiwsClient(FlowerClient):
             start_time, cpu_start, mem_start = self._start_resource_timer()
 
         for label, enc_data in encrypted_target.items():
-            ciphertext = deserialize_ciphertext(enc_data)
-            plaintext = self.context.Decrypt(ciphertext, self.secret_key)
-            plaintext.SetLength(1)
-            val = plaintext.GetCKKSPackedValue()[0].real
+            # Decrypt: Result is a vector, take 0th element
+            val = self.ts.ckks_vector_from(self.context, enc_data).decrypt()[0]
             target_distribution[int(label)] = max(0, int(round(val)))
 
         if self.fhe_metrics_enabled:
@@ -138,7 +129,7 @@ class FheDiwsClient(FlowerClient):
             return params, num_examples, metrics
 
         if config.get("current_round", 0) == 1:
-            # encrypt label distribution on round 1
+            # encrypt label distribution on round 1 using TenSEAL
             label_distribution = self.get_label_distribution()
             encrypted_dist = {}
 
@@ -147,9 +138,9 @@ class FheDiwsClient(FlowerClient):
                 start_time, cpu_start, mem_start = self._start_resource_timer()
 
             for label, count in label_distribution.items():
-                plaintext = self.context.MakeCKKSPackedPlaintext([float(count)])
-                ciphertext = self.context.Encrypt(self.public_key, plaintext)
-                encrypted_dist[label] = serialize_ciphertext(ciphertext)
+                encrypted_dist[label] = self.ts.ckks_vector(
+                    self.context, [float(count)]
+                ).serialize()
 
             if self.fhe_metrics_enabled:
                 enc_metrics = self._finish_resource_timer(
@@ -169,6 +160,7 @@ class FheDiwsClient(FlowerClient):
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[float, int, Dict[str, Scalar]]:
         if "blinded_diff" in config:
+            # Masked Interactive Protocol Check using TenSEAL
             # decrypt masked diffs and return only the sign
             blinded_diff_map = pickle.loads(config["blinded_diff"])
             is_capped_map = {}
@@ -178,10 +170,11 @@ class FheDiwsClient(FlowerClient):
                 start_time, cpu_start, mem_start = self._start_resource_timer()
 
             for label, enc_diff in blinded_diff_map.items():
-                ciphertext = deserialize_ciphertext(enc_diff)
-                plaintext = self.context.Decrypt(ciphertext, self.secret_key)
-                plaintext.SetLength(1)
-                val = plaintext.GetCKKSPackedValue()[0].real
+                # Decrypt: (Fair - Stock) * Mask
+                # Mask is positive, so sign is preserved.
+                # If > 0: Capped (Fair > Stock)
+                # If < 0: Capable (Stock > Fair)
+                val = self.ts.ckks_vector_from(self.context, enc_diff).decrypt()[0]
                 is_capped_map[label] = val > 0
 
             if self.fhe_metrics_enabled:
@@ -194,6 +187,7 @@ class FheDiwsClient(FlowerClient):
             return 0.0, 0, metrics
 
         if "check_global_feasibility" in config:
+            # Distributed Target Scaling Check using TenSEAL
             # decrypt masked feasibility checks and return a boolean
             blinded_checks_map = pickle.loads(config["check_global_feasibility"])
             is_feasible = True
@@ -203,10 +197,10 @@ class FheDiwsClient(FlowerClient):
                 start_time, cpu_start, mem_start = self._start_resource_timer()
 
             for _, enc_val in blinded_checks_map.items():
-                ciphertext = deserialize_ciphertext(enc_val)
-                plaintext = self.context.Decrypt(ciphertext, self.secret_key)
-                plaintext.SetLength(1)
-                val = plaintext.GetCKKSPackedValue()[0].real
+                # Decrypt: Active - (Dropped * k)
+                # Masked with positive random value
+                val = self.ts.ckks_vector_from(self.context, enc_val).decrypt()[0]
+                # Use epsilon for robustness against FHE noise
                 if val < -self.feasibility_epsilon:
                     is_feasible = False
                     break

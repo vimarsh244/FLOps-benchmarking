@@ -36,7 +36,8 @@
       shell: |
         cd {{ repo_path }}
         # Added -u for unbuffered output
-        nohup {{ python_env }} -u -m src.run_distributed \
+        # LD_PRELOAD libgomp to fix "cannot allocate memory in static TLS block" on ARM
+        LD_PRELOAD=/lib/aarch64-linux-gnu/libgomp.so.1 nohup {{ python_env }} -u -m src.run_distributed \
           hardware.run_mode=server \
           {{ experiment_overrides }} \
           > server.log 2>&1 &
@@ -123,7 +124,8 @@
       shell: |
         cd {{ repo_path }}
         # Uses server_address from inventory, defaults to localhost if missing
-        {{ python_env }} -m src.run_distributed \
+        # LD_PRELOAD libgomp to fix "cannot allocate memory in static TLS block" on ARM
+        LD_PRELOAD=/lib/aarch64-linux-gnu/libgomp.so.1 {{ python_env }} -m src.run_distributed \
           hardware.run_mode=client \
           hardware.server_address={{ server_address | default('localhost:8080') }} \
           hardware.partition_id={{ partition_id }} \
