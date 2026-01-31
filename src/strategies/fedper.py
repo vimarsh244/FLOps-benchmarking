@@ -1,8 +1,8 @@
 """FedPer strategy implementation.
 
-Paper: Federated Personalization with a Shared Base Model
+Paper: Federated Learning with Personalization Layers
            Arivazhagan et al., 2019
-           https://arxiv.org/abs/1902.05190
+           https://arxiv.org/pdf/1912.00818
 """
 
 from logging import WARNING
