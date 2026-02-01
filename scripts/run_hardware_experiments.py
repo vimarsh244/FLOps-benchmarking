@@ -185,6 +185,8 @@ class ExperimentConfig:
             "-i",
             str(INVENTORY_PATH),
             "-e",
+            "flops_sync_code=true",
+            "-e",
             json.dumps({"hydra_overrides": hydra_overrides}),
         ]
         return " ".join(ansible_cmd)
@@ -339,6 +341,8 @@ def run_hardware_experiment(
         str(RUN_EXPERIMENT_PLAYBOOK),
         "-i",
         str(INVENTORY_PATH),
+        "-e",
+        "flops_sync_code=true",
         "-e",
         json.dumps({"hydra_overrides": hydra_overrides}),
     ]

@@ -9,7 +9,7 @@
     venv_python: "{{ python_env | default('~/envs/flops/bin/python') }}"
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
     # Use cp38 wheel for vagators (Jetson), cp313 wheel for cortalims (RPi)
-    wheel_filename: "{{ 'tenseal-0.3.16-cp38-cp38-linux_aarch64.whl' if 'vagator' in inventory_hostname else 'tenseal-0.3.16-cp313-cp313-linux_aarch64.whl' }}"
+    wheel_filename: "{{ 'tenseal-0.3.16-cp38-cp38-linux_aarch64.whl' if 'vagator' in inventory_hostname else 'tenseal-0.3.16-cp311-cp311-linux_aarch64.whl' }}"
     local_wheel_path: "{{ '../../tenseal/TenSEAL/wheelhouse/' if 'vagator' in inventory_hostname else '../../tenseal/' }}{{ wheel_filename }}"
     remote_tmp_dir: "{{ repo_path }}/tmp"
     remote_wheel_path: "{{ remote_tmp_dir }}/{{ wheel_filename }}"

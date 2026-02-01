@@ -7,13 +7,12 @@ import os
 import pickle
 import time
 from collections import Counter
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 
 try:
     import psutil
-
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
@@ -40,6 +39,11 @@ class FheDiwsClient(FlowerClient):
         self.ts = get_tenseal()
         # load private context for encrypt/decrypt (TenSEAL context includes secret key)
         self.context = self._load_context_with_retry(self.client_context_path)
+        
+        # cache for label distribution (computed once)
+        self._label_distribution_cache: Optional[Dict[int, int]] = None
+        # cache for encrypted label distribution (to avoid re-encryption)
+        self._encrypted_label_dist_cache: Optional[Dict[int, bytes]] = None
 
     def _get_process_stats(self):
         if not PSUTIL_AVAILABLE:
@@ -77,11 +81,17 @@ class FheDiwsClient(FlowerClient):
         return load_client_context(path)
 
     def get_label_distribution(self) -> Dict[int, int]:
+        """Get label distribution, using cache if available."""
+        if self._label_distribution_cache is not None:
+            return self._label_distribution_cache
+
         label_counter = Counter()
         for batch in self.trainloader:
             labels = batch["label"]
             label_counter.update([int(label) for label in labels])
-        return dict(label_counter)
+
+        self._label_distribution_cache = dict(label_counter)
+        return self._label_distribution_cache
 
     def _handle_missing_clients(
         self, parameters: NDArrays, config: Dict[str, Scalar]
@@ -129,23 +139,34 @@ class FheDiwsClient(FlowerClient):
             return params, num_examples, metrics
 
         if config.get("current_round", 0) == 1:
+
             # encrypt label distribution on round 1 using TenSEAL
+            # use cache if available to avoid re-encryption
+            if self._encrypted_label_dist_cache is not None:
+                encrypted_dist = self._encrypted_label_dist_cache
+                enc_metrics: Dict[str, Scalar] = {"fhe_encrypt_cache_hit": 1.0}
+            else:
+                label_distribution = self.get_label_distribution()
+                encrypted_dist = {}
+
+                enc_metrics: Dict[str, Scalar] = {}
+                if self.fhe_metrics_enabled:
+                    start_time, cpu_start, mem_start = self._start_resource_timer()
+
+                for label, count in label_distribution.items():
+                    encrypted_dist[label] = self.ts.ckks_vector(
+                        self.context, [float(count)]
+                    ).serialize()
+
+                if self.fhe_metrics_enabled:
+                    enc_metrics = self._finish_resource_timer(
+                        "fhe_encrypt_label_dist", start_time, cpu_start, mem_start
+                    )
+
+                # cache the encrypted distribution
+                self._encrypted_label_dist_cache = encrypted_dist
+
             label_distribution = self.get_label_distribution()
-            encrypted_dist = {}
-
-            enc_metrics: Dict[str, Scalar] = {}
-            if self.fhe_metrics_enabled:
-                start_time, cpu_start, mem_start = self._start_resource_timer()
-
-            for label, count in label_distribution.items():
-                encrypted_dist[label] = self.ts.ckks_vector(
-                    self.context, [float(count)]
-                ).serialize()
-
-            if self.fhe_metrics_enabled:
-                enc_metrics = self._finish_resource_timer(
-                    "fhe_encrypt_label_dist", start_time, cpu_start, mem_start
-                )
 
             metrics.update(enc_metrics)
             metrics["label_distribution"] = pickle.dumps(encrypted_dist)
@@ -160,7 +181,8 @@ class FheDiwsClient(FlowerClient):
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[float, int, Dict[str, Scalar]]:
         if "blinded_diff" in config:
-            # Masked Interactive Protocol Check using TenSEAL
+
+            # masked Interactive Protocol Check using TenSEAL
             # decrypt masked diffs and return only the sign
             blinded_diff_map = pickle.loads(config["blinded_diff"])
             is_capped_map = {}
@@ -187,7 +209,7 @@ class FheDiwsClient(FlowerClient):
             return 0.0, 0, metrics
 
         if "check_global_feasibility" in config:
-            # Distributed Target Scaling Check using TenSEAL
+            # distributed Target Scaling Check using TenSEAL
             # decrypt masked feasibility checks and return a boolean
             blinded_checks_map = pickle.loads(config["check_global_feasibility"])
             is_feasible = True

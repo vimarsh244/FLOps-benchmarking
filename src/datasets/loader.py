@@ -201,6 +201,11 @@ def load_data(
         return {"img": images, "label": labels}
 
     cpu_count = os.cpu_count() or 1
+
+    # had to debug this issue due to some segfault while some dataloaders were being created with multiple workers
+    # Default to 0 workers (single-process) for stability on distributed hardware
+    # Multi-process data loading can cause segfaults on ARM devices (Raspberry Pi, Jetson)
+    # due to memory constraints and library conflicts (libgomp TLS issues)
     num_workers = 0
     pin_memory = False
     persistent_workers = False
@@ -210,6 +215,8 @@ def load_data(
         workers_cfg = dataloader_cfg.get("dataloader_workers", None)
         if workers_cfg is None:
             workers_cfg = dataloader_cfg.get("data_loader_workers", 0)
+        # Force num_workers=0 to avoid segfaults on ARM devices in distributed mode
+        # Only allow multi-worker in simulation mode
         if isinstance(workers_cfg, str) and workers_cfg.lower() == "auto":
             num_workers = cpu_count
         elif workers_cfg is not None:

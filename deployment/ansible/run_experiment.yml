@@ -87,6 +87,7 @@
   
   vars:
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
+    sync_code: "{{ flops_sync_code | default(false) }}"
     # note: hydra_overrides is passed via -e from the calling script
     experiment_overrides: "{{ hydra_overrides | default('') }}"
     hf_offline: "{{ flops_hf_offline | default(false) }}"
@@ -118,6 +119,7 @@
           - "--exclude=*.egg-info"
           - "--exclude=deployment" 
       delegate_to: localhost
+          when: sync_code | bool
 
       
     - name: Start Flower client
@@ -154,6 +156,7 @@
       until: job_result.finished
       retries: 2880  # 2 hours at 10s intervals
       delay: 10
+      failed_when: false
       
     - name: Display completion status
       debug:

@@ -249,6 +249,8 @@ def run_with_ansible(
                 "-e",
                 f"flops_repo_path={remote_path}",
                 "-e",
+                "flops_sync_code=true",
+                "-e",
                 f"server_address={cfg.hardware.server.host}:{cfg.hardware.server.port}",
                 "-e",
                 json.dumps({"hydra_overrides": hydra_overrides}),
@@ -402,9 +404,19 @@ def run_server(cfg: DictConfig) -> None:
     from src.server.server_app import create_strategy
     from src.models.registry import get_model_from_config
     from src.server.server_app import get_initial_parameters
+    from src.utils.logging import ExperimentLogger
+    from src.utils.helpers import save_config
 
     logger = get_logger()
     wandb_run = None
+
+    # create output directory for logs
+    output_dir = Path(cfg.experiment.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    save_config(cfg, output_dir)
+
+    # initialize experiment logger for CSV/JSON output
+    exp_logger = ExperimentLogger(cfg, output_dir)
 
     if cfg.logging.get("backend") == "wandb":
         wandb_run = _init_wandb_for_server(cfg)
@@ -437,6 +449,11 @@ def run_server(cfg: DictConfig) -> None:
         logger.error(f"Error starting server: {e}")
         raise e
     finally:
+        # save offline logs
+        logger.info("Saving offline logs...")
+        exp_logger.save()
+        logger.info(f"Logs saved to {output_dir}")
+        
         # ensure wandb is properly finished even if server crashes
         if wandb_run is not None:
             logger.info("Finishing wandb run...")

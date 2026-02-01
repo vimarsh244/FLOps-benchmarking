@@ -65,6 +65,11 @@ class DIWSFHE(Strategy):
         self.cid_to_partition: Dict[str, str] = {}
         self.inv_num_cache: Dict[int, object] = {}
 
+        # computation cache for substitution shares keyed by (active_cids, dropped_pids)
+        self.computation_cache: Dict[tuple, Dict[str, Dict[int, object]]] = {}
+        # cache for zero encrypted vector to avoid repeated encryption
+        self._zero_enc_cache: Optional[object] = None
+
     def __repr__(self) -> str:
         return repr(self.aggregator_strategy)
 
@@ -87,7 +92,15 @@ class DIWSFHE(Strategy):
                 self.context = load_context(self.server_context_path)
         self.cid_to_partition = {}
         self.inv_num_cache = {}
+        self.computation_cache = {}
+        self._zero_enc_cache = None
         return self.global_parameters
+
+    def _get_zero_enc(self) -> object:
+        """Return cached zero encrypted vector to avoid repeated encryption."""
+        if self._zero_enc_cache is None:
+            self._zero_enc_cache = self.ts.ckks_vector(self.context, [0.0])
+        return self._zero_enc_cache.copy()
 
     def evaluate(
         self, server_round: int, parameters: Parameters
@@ -186,18 +199,65 @@ class DIWSFHE(Strategy):
         if not actual_dropped:
             return
 
+        # generate cache key based on active and dropped partitions
+        cache_key = (tuple(sorted(active_cids)), tuple(sorted(actual_dropped)))
+
+        if cache_key in self.computation_cache:
+            # cache hit - reuse previously computed shares
+            final_shares = self.computation_cache[cache_key]
+            log_metrics(
+                {"diws_fhe/cache_hit": 1.0},
+                step=server_round,
+            )
+        else:
+            # cache miss - compute substitution shares
+            final_shares = self._compute_substitution_shares(
+                active_cids=active_cids,
+                active_client_proxies=active_client_proxies,
+                actual_dropped=actual_dropped,
+                server_round=server_round,
+            )
+            self.computation_cache[cache_key] = final_shares
+            log_metrics(
+                {"diws_fhe/cache_miss": 1.0},
+                step=server_round,
+            )
+
+        # trigger subset training with encrypted shares
+        self._trigger_subset_training(
+            active_client_proxies=active_client_proxies,
+            final_shares=final_shares,
+            server_round=server_round,
+            results=results,
+            actual_dropped=actual_dropped,
+            active_cids=active_cids,
+        )
+
+    def _compute_substitution_shares(
+        self,
+        active_cids: List[str],
+        active_client_proxies: List[ClientProxy],
+        actual_dropped: List[str],
+        server_round: int,
+    ) -> Dict[str, Dict[int, object]]:
+        """Compute substitution shares for dropped clients using FHE.
+
+        Returns:
+            Dictionary mapping client IDs to their share allocations per label.
+        """
         # sum encrypted counts from dropped clients
         dropped_demand: Dict[int, object] = {}
         for pid in actual_dropped:
             dist = self.label_distribution.get(pid, {})
             for label, count_enc in dist.items():
                 if label not in dropped_demand:
+                    # copying to prevent in-place modulus switching degradation
                     dropped_demand[label] = count_enc.copy()
                 else:
                     dropped_demand[label] += count_enc
 
         if not dropped_demand:
-            return
+            return {cid: {} for cid in active_cids}
 
         # sum encrypted counts for active clients
         active_stock: Dict[int, object] = {}
@@ -208,29 +268,72 @@ class DIWSFHE(Strategy):
                 dist = self.label_distribution.get(cid, {})
             for label, count_enc in dist.items():
                 if label not in active_stock:
+                    # copying to prevent in-place modulus switching degradation
                     active_stock[label] = count_enc.copy()
                 else:
                     active_stock[label] += count_enc
 
+        # distributed Target Scaling via Blind Binary Search
+        final_k = self._binary_search_scaling_factor(
+            active_client_proxies=active_client_proxies,
+            active_stock=active_stock,
+            dropped_demand=dropped_demand,
+            server_round=server_round,
+        )
+
+        # apply scaling to dropped demand
+        k_final_enc = self.ts.ckks_vector(self.context, [final_k])
+        scaled_dropped_demand = {
+            label: val.copy() * k_final_enc for label, val in dropped_demand.items()
+        }
+
+        # run masked interactive protocol to distribute shares
+        final_shares = self._run_masked_interactive_protocol(
+            active_cids=active_cids,
+            active_client_proxies=active_client_proxies,
+            dropped_demand=scaled_dropped_demand,
+            server_round=server_round,
+        )
+
+        return final_shares
+
+    def _binary_search_scaling_factor(
+        self,
+        active_client_proxies: List[ClientProxy],
+        active_stock: Dict[int, object],
+        dropped_demand: Dict[int, object],
+        server_round: int,
+    ) -> float:
+        """Find optimal scaling factor k using blind binary search.
+
+        Returns:
+            Scaling factor k in [0, 1] such that active_stock >= k * dropped_demand.
+        """
         helper_proxy = active_client_proxies[0]
         k_min = 0.0
         k_max = 1.0
         feasibility_metrics: List[Dict[str, Scalar]] = []
+        labels_to_check = list(dropped_demand.keys())
 
         for _ in range(self.binary_search_iterations):
             k_mid = (k_min + k_max) / 2.0
             blinded_checks = {}
-            labels_to_check = list(dropped_demand.keys())
 
-            # blind active - dropped * k
+            # encrypt k_mid and mask once per iteration (optimization)
             k_enc = self.ts.ckks_vector(self.context, [k_mid])
             mask_val = random.uniform(*self.mask_range)
             mask_enc = self.ts.ckks_vector(self.context, [mask_val])
-            zero_enc = self.ts.ckks_vector(self.context, [0.0])
 
             for label in labels_to_check:
-                stock_total = active_stock.get(label, zero_enc)
-                dropped_total = dropped_demand[label]
+                # use cached zero for missing labels
+                stock_total = active_stock.get(label)
+                if stock_total is None:
+                    stock_total = self._get_zero_enc()
+                else:
+                    stock_total = stock_total.copy()  # Prevent degradation
+
+                dropped_total = dropped_demand[label].copy()  # Prevent degradation
+                # Compute: Active - (Dropped * k), then blind with mask
                 diff = stock_total - (dropped_total * k_enc)
                 blinded = diff * mask_enc
                 blinded_checks[label] = blinded.serialize()
@@ -273,32 +376,46 @@ class DIWSFHE(Strategy):
                 prefix="fhe/feasibility",
             )
 
-        final_k = k_min
-        k_final_enc = self.ts.ckks_vector(self.context, [final_k])
-        scaled_dropped_demand = {label: val * k_final_enc for label, val in dropped_demand.items()}
-        dropped_demand = scaled_dropped_demand
+        return k_min
 
+    def _run_masked_interactive_protocol(
+        self,
+        active_cids: List[str],
+        active_client_proxies: List[ClientProxy],
+        dropped_demand: Dict[int, object],
+        server_round: int,
+    ) -> Dict[str, Dict[int, object]]:
+        """Run masked interactive protocol to distribute shares among active clients.
+
+        Returns:
+            Dictionary mapping client IDs to their share allocations per label.
+        """
         final_shares: Dict[str, Dict[int, object]] = {cid: {} for cid in active_cids}
-        remaining_demand = dropped_demand.copy()
+        remaining_demand = {label: val.copy() for label, val in dropped_demand.items()}
         all_labels = set(remaining_demand.keys())
         active_set = {label: list(active_client_proxies) for label in all_labels}
+        client_proxy_map = {p.cid: p for p in active_client_proxies}
 
         for i_loop in range(self.max_protocol_iters):
-            blinded_checks_per_client = {cid: {} for cid in active_cids}
-            client_proxy_map = {p.cid: p for p in active_client_proxies}
-            labels_to_check = []
+            blinded_checks_per_client: Dict[str, Dict[int, bytes]] = {
+                cid: {} for cid in active_cids
+            }
+            has_checks = False
 
             for label in all_labels:
                 if not active_set[label]:
                     continue
+
                 target = remaining_demand[label]
                 num_active = len(active_set[label])
+
+                # cache inverse of num_active to avoid repeated encryption
                 if num_active not in self.inv_num_cache:
                     self.inv_num_cache[num_active] = self.ts.ckks_vector(
                         self.context, [1.0 / num_active]
                     )
                 inv_num_enc = self.inv_num_cache[num_active]
-                fair_share = target * inv_num_enc
+                fair_share = target.copy() * inv_num_enc
 
                 for client in active_set[label]:
                     cid = client.cid
@@ -306,22 +423,25 @@ class DIWSFHE(Strategy):
                     dist = self.label_distribution.get(str(cid_key), {})
                     if not dist:
                         dist = self.label_distribution.get(cid, {})
+
                     stock_enc = dist.get(label)
                     if stock_enc is None:
-                        stock_enc = self.ts.ckks_vector(self.context, [0.0])
+                        stock_enc = self._get_zero_enc()
                     else:
+                        # copying to prevent in-place modulus switching degradation
                         stock_enc = stock_enc.copy()
 
+                    # Generate random mask for blinding
                     mask_val = random.uniform(*self.mask_range)
                     mask_enc = self.ts.ckks_vector(self.context, [mask_val])
                     blinded_diff = (fair_share - stock_enc) * mask_enc
                     blinded_checks_per_client[cid][label] = blinded_diff.serialize()
-                    labels_to_check.append(label)
+                    has_checks = True
 
-            if not labels_to_check:
+            if not has_checks:
                 break
 
-            # per-client masked feasibility checks
+            # Per-client masked feasibility checks (parallel)
             iteration_metrics: List[Dict[str, Scalar]] = []
             with ThreadPoolExecutor() as executor:
                 futures = {}
@@ -344,21 +464,36 @@ class DIWSFHE(Strategy):
                         res = future.result()
                     except Exception:
                         continue
+
                     if res.metrics:
                         iteration_metrics.append(
-                            {k: v for k, v in res.metrics.items() if isinstance(v, (int, float))}
+                            {
+                                k: v
+                                for k, v in res.metrics.items()
+                                if isinstance(v, (int, float))
+                            }
                         )
                         self._log_client_metrics(cid, res.metrics, server_round)
-                    is_capped_map = pickle.loads(res.metrics.get("is_capped", pickle.dumps({})))
+
+                    is_capped_map = pickle.loads(
+                        res.metrics.get("is_capped", pickle.dumps({}))
+                    )
                     for label, is_capped in is_capped_map.items():
                         if is_capped:
+                            # client is capped - assign stock as final share
                             cid_key = self.cid_to_partition.get(cid, cid)
                             dist = self.label_distribution.get(str(cid_key), {})
                             if not dist:
                                 dist = self.label_distribution.get(cid, {})
-                            stock = dist.get(label, self.ts.ckks_vector(self.context, [0.0]))
+                            stock = dist.get(label)
+                            if stock is None:
+                                stock = self._get_zero_enc()
+                            else:
+                                stock = stock.copy()
                             final_shares[cid][label] = stock
-                            remaining_demand[label] -= stock
+                            # subtract stock from remaining demand
+                            remaining_demand[label] = remaining_demand[label] - stock
+                            # remove from active set
                             proxy = client_proxy_map[cid]
                             if proxy in active_set[label]:
                                 active_set[label].remove(proxy)
@@ -370,16 +505,37 @@ class DIWSFHE(Strategy):
                     prefix=f"fhe/blinded_iter_{i_loop + 1}",
                 )
 
+        # Final assignment for remaining active clients
         for label in all_labels:
             active_clients = active_set[label]
             if not active_clients:
                 continue
             target = remaining_demand[label]
-            fair_share = target * (1.0 / len(active_clients))
+            num_active = len(active_clients)
+            if num_active not in self.inv_num_cache:
+                self.inv_num_cache[num_active] = self.ts.ckks_vector(
+                    self.context, [1.0 / num_active]
+                )
+            fair_share = target.copy() * self.inv_num_cache[num_active]
             for client in active_clients:
                 final_shares[client.cid][label] = fair_share
 
-        # trigger subset training with encrypted shares
+        return final_shares
+
+    def _trigger_subset_training(
+        self,
+        active_client_proxies: List[ClientProxy],
+        final_shares: Dict[str, Dict[int, object]],
+        server_round: int,
+        results: List[Tuple[ClientProxy, FitRes]],
+        actual_dropped: List[str],
+        active_cids: List[str],
+    ) -> None:
+        """Trigger subset training on active clients with computed shares."""
+        all_labels = set()
+        for shares in final_shares.values():
+            all_labels.update(shares.keys())
+
         with ThreadPoolExecutor() as executor:
             futures = {}
             for client_proxy in active_client_proxies:
