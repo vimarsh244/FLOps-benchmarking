@@ -185,7 +185,7 @@ class ExperimentConfig:
             "-i",
             str(INVENTORY_PATH),
             "-e",
-            "flops_sync_code=true",
+            "flops_sync_code=false",
             "-e",
             json.dumps({"hydra_overrides": hydra_overrides}),
         ]
@@ -342,7 +342,7 @@ def run_hardware_experiment(
         "-i",
         str(INVENTORY_PATH),
         "-e",
-        "flops_sync_code=true",
+        "flops_sync_code=false",
         "-e",
         json.dumps({"hydra_overrides": hydra_overrides}),
     ]
