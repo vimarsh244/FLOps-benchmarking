@@ -69,7 +69,7 @@ NIID_LEVELS = {
     "medium": "niid_medium",
     "low": "niid_low",
 }
-SCENARIOS = ["baseline", "node_drop", "node_drop_standard"]
+SCENARIOS = ["baseline", "node_drop", "node_drop_standard", "node_drop_standard_20clients"]
 DATASETS = ["cifar10", "cifar100", "tiny_imagenet"]
 MODELS = ["simplecnn", "simplecnn_large", "resnet18", "resnet18_gn"]
 
@@ -132,10 +132,17 @@ class ExperimentConfig:
     def to_hydra_overrides(self) -> str:
         """Convert to Hydra command line overrides."""
         overrides: List[str] = []
-        if self.config_path:
-            overrides.append(f"--config-path {self.config_path}")
-        if self.config_name:
-            overrides.append(f"--config-name {self.config_name}")
+        
+        # If using a config file, only use config-path/config-name
+        if self.config_path or self.config_name:
+            if self.config_path:
+                overrides.append(f"--config-path {self.config_path}")
+            if self.config_name:
+                overrides.append(f"--config-name {self.config_name}")
+            # Don't add any other overrides - config file has everything
+            return " ".join(overrides)
+        
+        # Otherwise, build overrides from individual parameters
         if self.strategy:
             overrides.append(f"strategy={self.strategy}")
         if self.partitioner:
@@ -216,8 +223,13 @@ def _resolve_config_files(config_files: List[str]) -> List[Tuple[str, str]]:
             path = PROJECT_ROOT / path
         config_name = path.stem
         config_path = path.parent
+        
+        # Make path relative to src/ since run_distributed.py runs from there
         try:
+            src_dir = PROJECT_ROOT / "src"
             config_path = config_path.relative_to(PROJECT_ROOT)
+            # Prepend ../ to go up from src/ to project root
+            config_path = Path("..") / config_path
         except ValueError:
             print(
                 f"⚠ Config path {config_path} is outside the repo; "
@@ -552,8 +564,11 @@ Examples:
     # run with different dataset and model
     python scripts/run_hardware_experiments.py --dataset cifar100 --model resnet18_gn
     
-    # compare diws vs diws_fhe on iid vs niid (medium) for baseline and node_drop_standard
+    # compare diws vs diws_fhe on iid vs niid (medium) for baseline and node_drop_standard_20clients
     python scripts/run_hardware_experiments.py --compare-diws --compare-iid-niid --compare-scenarios
+
+    # run all node-drop scenarios
+    python scripts/run_hardware_experiments.py --node-drop
     
     # dry run to see what would be executed
     python scripts/run_hardware_experiments.py --dry-run
@@ -609,7 +624,12 @@ Examples:
     parser.add_argument(
         "--compare-scenarios",
         action="store_true",
-        help="Run baseline and node_drop_standard (overrides --scenario)",
+        help="Run baseline and node_drop_standard_20clients (overrides --scenario)",
+    )
+    parser.add_argument(
+        "--node-drop",
+        action="store_true",
+        help="Run all node-drop scenarios (overrides --scenario/--compare-scenarios)",
     )
     parser.add_argument(
         "--include-node-drop",
@@ -686,10 +706,14 @@ Examples:
 
     # resolve scenarios
     scenarios = args.scenario
-    if args.compare_scenarios:
+    if args.node_drop:
+        if args.scenario or args.compare_scenarios:
+            print("⚠ --node-drop specified; ignoring --scenario/--compare-scenarios")
+        scenarios = [s for s in SCENARIOS if s.startswith("node_drop")]
+    elif args.compare_scenarios:
         if args.scenario:
             print("⚠ --compare-scenarios specified; ignoring --scenario")
-        scenarios = ["baseline", "node_drop_standard"]
+        scenarios = ["baseline", "node_drop_standard_20clients"]
         if args.include_node_drop and "node_drop" not in scenarios:
             scenarios.append("node_drop")
 

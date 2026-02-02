@@ -88,6 +88,9 @@
   vars:
     repo_path: "{{ flops_repo_path | default('~/flops-benchmarking') }}"
     sync_code: "{{ flops_sync_code | default(false) }}"
+    # Client runtime controls (override via inventory/group vars or -e)
+    client_async_timeout: "{{ flops_client_async_timeout | default(86400) }}"  # 24h
+    client_wait_retries: "{{ flops_client_wait_retries | default(8640) }}"  # 24h @ 10s
     # note: hydra_overrides is passed via -e from the calling script
     experiment_overrides: "{{ hydra_overrides | default('') }}"
     hf_offline: "{{ flops_hf_offline | default(false) }}"
@@ -119,7 +122,7 @@
           - "--exclude=*.egg-info"
           - "--exclude=deployment" 
       delegate_to: localhost
-          when: sync_code | bool
+      when: sync_code | bool
 
       
     - name: Start Flower client
@@ -133,7 +136,7 @@
           hardware.partition_id={{ partition_id }} \
           {{ experiment_overrides }} \
           > client_{{ partition_id }}.log 2>&1
-      async: 28800  # 8hr timeout
+      async: "{{ client_async_timeout | int }}"
       poll: 0
       register: client_job
       # Apply proxy settings to the client process
@@ -147,6 +150,8 @@
 - name: Wait for Experiment Completion
   hosts: clients
   become: false
+  vars:
+    client_wait_retries: "{{ flops_client_wait_retries | default(8640) }}"  # 24h @ 10s
   
   tasks:
     - name: Wait for client completion
@@ -154,7 +159,7 @@
         jid: "{{ client_job.ansible_job_id }}"
       register: job_result
       until: job_result.finished
-      retries: 2880  # 2 hours at 10s intervals
+      retries: "{{ client_wait_retries | int }}"
       delay: 10
       failed_when: false
       
