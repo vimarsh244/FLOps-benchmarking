@@ -9,8 +9,8 @@ dataset_name: tiny_shakespeare
 task_type: char_lm
 
 # Vocabulary and sequence configuration
-vocab_size: 65     # Unique characters in Shakespeare corpus
-num_classes: 65    # Same as vocab_size (for model output)
+vocab_size: 79     # Unique characters in Shakespeare corpus
+num_classes: 79    # Same as vocab_size (for model output)
 sequence_length: 80
 
 # Keys used in the dataset

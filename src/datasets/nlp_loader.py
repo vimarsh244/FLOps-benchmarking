@@ -79,6 +79,29 @@ class CharLMDataset(Dataset):
         }
 
 
+class PrebuiltSequenceDataset(Dataset):
+    """Dataset for pre-built sequences (used for IID partitioning)."""
+    
+    def __init__(self, sequences: List[Tuple[List[int], List[int]]]):
+        """Initialize dataset from pre-built sequences.
+        
+        Args:
+            sequences: List of (input_ids, target_ids) tuples
+        """
+        self.sequences = sequences
+    
+    def __len__(self) -> int:
+        return len(self.sequences)
+    
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        """Get a sequence pair."""
+        input_ids, target_ids = self.sequences[idx]
+        return {
+            "input_ids": torch.tensor(input_ids, dtype=torch.long),
+            "target_ids": torch.tensor(target_ids, dtype=torch.long),
+        }
+
+
 def build_vocab_from_dataset(dataset_cfg: DictConfig) -> CharacterVocab:
     """Build vocabulary from dataset configuration.
     
@@ -104,8 +127,9 @@ def load_text_data(
 ) -> Tuple[DataLoader, DataLoader]:
     """Load partitioned text data for a client.
     
-    For Shakespeare-style datasets where the entire corpus is one text blob,
-    we partition by splitting the text into chunks.
+    Supports both IID and non-IID partitioning:
+    - IID: Sequences are shuffled globally, then distributed uniformly
+    - Non-IID (contiguous): Each client gets a contiguous chunk of text
     
     Args:
         partition_id: ID of the partition to load
@@ -118,6 +142,7 @@ def load_text_data(
     Returns:
         Tuple of (train_loader, test_loader)
     """
+    import random
     from datasets import load_dataset
     
     # Load the full training dataset
@@ -131,28 +156,66 @@ def load_text_data(
     text_key = dataset_cfg.get("text_key", "text")
     full_text = dataset[0][text_key]
     
-    # Partition the text by splitting into chunks
-    # Each client gets a contiguous chunk of the text
-    chunk_size = len(full_text) // num_partitions
-    start_idx = partition_id * chunk_size
-    end_idx = start_idx + chunk_size if partition_id < num_partitions - 1 else len(full_text)
-    
-    client_text = full_text[start_idx:end_idx]
-    
-    # Split client's text into train/val
-    split_point = int(len(client_text) * (1 - test_fraction))
-    train_text = client_text[:split_point]
-    val_text = client_text[split_point:]
-    
     # Build vocabulary
     vocab = build_vocab_from_dataset(dataset_cfg)
     
     # Get sequence length from config
     sequence_length = dataset_cfg.get("sequence_length", 80)
     
-    # Create datasets
-    train_dataset = CharLMDataset(train_text, vocab, sequence_length)
-    test_dataset = CharLMDataset(val_text, vocab, sequence_length)
+    # Check partitioner type
+    partitioner_name = partitioner_cfg.get("name", "iid").lower()
+    
+    if partitioner_name == "iid":
+        # TRUE IID: Build all sequences, shuffle, then partition
+        # Encode the full text
+        encoded = vocab.encode(full_text)
+        
+        # Build all possible sequences
+        all_sequences = []
+        for i in range(len(encoded) - sequence_length):
+            input_seq = encoded[i:i + sequence_length]
+            target_seq = encoded[i + 1:i + sequence_length + 1]
+            all_sequences.append((input_seq, target_seq))
+        
+        # Shuffle with fixed seed for reproducibility
+        seed = partitioner_cfg.get("seed", 42)
+        random.Random(seed).shuffle(all_sequences)
+        
+        # Partition uniformly across clients
+        sequences_per_client = len(all_sequences) // num_partitions
+        start_idx = partition_id * sequences_per_client
+        if partition_id < num_partitions - 1:
+            end_idx = start_idx + sequences_per_client
+        else:
+            end_idx = len(all_sequences)
+        
+        client_sequences = all_sequences[start_idx:end_idx]
+        
+        # Split into train/val
+        split_point = int(len(client_sequences) * (1 - test_fraction))
+        train_sequences = client_sequences[:split_point]
+        val_sequences = client_sequences[split_point:]
+        
+        # Create datasets from pre-built sequences
+        train_dataset = PrebuiltSequenceDataset(train_sequences)
+        test_dataset = PrebuiltSequenceDataset(val_sequences)
+    else:
+        # NON-IID (contiguous chunks): Original behavior
+        # Each client gets a contiguous chunk of the text
+        chunk_size = len(full_text) // num_partitions
+        start_idx = partition_id * chunk_size
+        end_idx = start_idx + chunk_size if partition_id < num_partitions - 1 else len(full_text)
+        
+        client_text = full_text[start_idx:end_idx]
+        
+        # Split client's text into train/val
+        split_point = int(len(client_text) * (1 - test_fraction))
+        train_text = client_text[:split_point]
+        val_text = client_text[split_point:]
+        
+        # Create datasets
+        train_dataset = CharLMDataset(train_text, vocab, sequence_length)
+        test_dataset = CharLMDataset(val_text, vocab, sequence_length)
     
     # Create dataloaders
     train_loader = DataLoader(
