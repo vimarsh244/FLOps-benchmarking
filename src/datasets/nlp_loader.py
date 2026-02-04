@@ -166,13 +166,19 @@ def load_text_data(
     partitioner_name = partitioner_cfg.get("name", "iid").lower()
     
     if partitioner_name == "iid":
-        # TRUE IID: Build all sequences, shuffle, then partition
+        # TRUE IID: Build sequences with stride, shuffle, then partition
         # Encode the full text
         encoded = vocab.encode(full_text)
         
-        # Build all possible sequences
+        # OPTIMIZATION: Use stride to reduce sequence count (LEAF-like scale)
+        # stride=10 on 1.1M chars → ~110k total sequences
+        # max_sequences_per_client=5000 caps each client for fast training
+        stride = dataset_cfg.get("stride", 10)
+        max_sequences_per_client = dataset_cfg.get("max_sequences_per_client", 5000)
+        
+        # Build sequences with stride (not every position)
         all_sequences = []
-        for i in range(len(encoded) - sequence_length):
+        for i in range(0, len(encoded) - sequence_length, stride):
             input_seq = encoded[i:i + sequence_length]
             target_seq = encoded[i + 1:i + sequence_length + 1]
             all_sequences.append((input_seq, target_seq))
@@ -181,13 +187,12 @@ def load_text_data(
         seed = partitioner_cfg.get("seed", 42)
         random.Random(seed).shuffle(all_sequences)
         
-        # Partition uniformly across clients
+        # Partition uniformly across clients with cap
         sequences_per_client = len(all_sequences) // num_partitions
+        sequences_per_client = min(sequences_per_client, max_sequences_per_client)
+        
         start_idx = partition_id * sequences_per_client
-        if partition_id < num_partitions - 1:
-            end_idx = start_idx + sequences_per_client
-        else:
-            end_idx = len(all_sequences)
+        end_idx = min(start_idx + sequences_per_client, len(all_sequences))
         
         client_sequences = all_sequences[start_idx:end_idx]
         

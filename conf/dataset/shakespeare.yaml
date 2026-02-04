@@ -12,6 +12,8 @@ task_type: char_lm
 vocab_size: 79     # Unique characters in Shakespeare corpus
 num_classes: 79    # Same as vocab_size (for model output)
 sequence_length: 80
+stride: 10                      # Skip positions when building sequences (1=all, 10=1/10th)
+max_sequences_per_client: 10000  # Cap sequences per client (LEAF uses ~1-5k)
 
 # Keys used in the dataset
 text_key: text
