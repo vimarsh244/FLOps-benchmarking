@@ -179,12 +179,12 @@ class NLPFlowerClient(NumPyClient):
         
         self.set_parameters(parameters)
         
-        loss, perplexity = self._test()
+        loss, perplexity, accuracy = self._test()
         
         end_time = time.time()
         runtime = end_time - start_time
         
-        return loss, len(self.valloader.dataset), {"perplexity": perplexity, "runtime": runtime}
+        return loss, len(self.valloader.dataset), {"perplexity": perplexity, "accuracy": accuracy, "runtime": runtime}
 
     def _train(self, epochs: int, proximal_mu: float = 0.0) -> Tuple[float, float]:
         """Train the model for specified epochs.
@@ -250,17 +250,18 @@ class NLPFlowerClient(NumPyClient):
         
         return avg_loss, perplexity
 
-    def _test(self) -> Tuple[float, float]:
+    def _test(self) -> Tuple[float, float, float]:
         """Evaluate the model on validation data.
         
         Returns:
-            Tuple of (loss, perplexity)
+            Tuple of (loss, perplexity, accuracy)
         """
         self.model.to(self.device)
         self.model.eval()
         
         criterion = nn.CrossEntropyLoss()
         total_loss = 0.0
+        correct = 0
         num_tokens = 0
         
         with torch.no_grad():
@@ -276,9 +277,14 @@ class NLPFlowerClient(NumPyClient):
                 
                 loss = criterion(outputs_flat, targets_flat)
                 total_loss += loss.item() * (batch_size * seq_len)
+                
+                # Compute accuracy
+                predictions = outputs_flat.argmax(dim=1)
+                correct += (predictions == targets_flat).sum().item()
                 num_tokens += batch_size * seq_len
         
         avg_loss = total_loss / max(num_tokens, 1)
         perplexity = torch.exp(torch.tensor(avg_loss)).item()
+        accuracy = correct / max(num_tokens, 1)
         
-        return avg_loss, perplexity
+        return avg_loss, perplexity, accuracy
