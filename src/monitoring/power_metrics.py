@@ -43,11 +43,46 @@ class PowerMonitor:
         """Initialize power monitor.
 
         Args:
-            device_type: Device type (auto, nvidia, jetson, raspberry_pi, intel_rapl)
+            device_type: Device type (auto, nvidia, jetson, raspberry_pi, intel_rapl,
+                raspberry_pi_4b, raspberry_pi_5, jetson_orin_nx)
         """
-        self.device_type = device_type if device_type != "auto" else self._detect_device()
+        if device_type == "auto":
+            detected = self._detect_device()
+            self.device_type_raw = detected
+            self.device_type = self._normalize_device_type(detected)
+        else:
+            self.device_type_raw = device_type
+            self.device_type = self._normalize_device_type(device_type)
         self._metrics_history = []
         self._last_rapl_values = {}
+
+    @staticmethod
+    def _normalize_device_type(device_type: str) -> str:
+        """Normalize device type to a supported family.
+
+        Args:
+            device_type: Raw device type string
+
+        Returns:
+            Normalized device family string
+        """
+        if not device_type:
+            return "unknown"
+
+        value = device_type.strip().lower()
+
+        if value.startswith("jetson"):
+            return "jetson"
+        if value in {"raspberry_pi", "raspberry_pi_4b", "raspberry_pi_5", "rpi4", "rpi5"}:
+            return "raspberry_pi"
+        if value in {"nvidia", "nvidia_gpu", "gpu"}:
+            return "nvidia"
+        if value in {"intel_rapl", "rapl", "intel"}:
+            return "intel_rapl"
+        if value == "auto":
+            return "unknown"
+
+        return value
 
     def _detect_device(self) -> str:
         """Auto-detect device type.
@@ -55,6 +90,29 @@ class PowerMonitor:
         Returns:
             Detected device type string
         """
+        # check device model if available
+        model_paths = [
+            Path("/proc/device-tree/model"),
+            Path("/sys/firmware/devicetree/base/model"),
+        ]
+        for model_path in model_paths:
+            if model_path.exists():
+                try:
+                    with open(model_path) as f:
+                        model = f.read().lower()
+                    if "jetson" in model:
+                        if "orin" in model and "nx" in model:
+                            return "jetson_orin_nx"
+                        return "jetson"
+                    if "raspberry" in model:
+                        if "raspberry pi 5" in model:
+                            return "raspberry_pi_5"
+                        if "raspberry pi 4" in model:
+                            return "raspberry_pi_4b"
+                        return "raspberry_pi"
+                except Exception:
+                    pass
+
         # check for jetson
         if Path("/etc/nv_tegra_release").exists() or JTOP_AVAILABLE:
             return "jetson"
@@ -91,7 +149,7 @@ class PowerMonitor:
         Returns:
             True if power monitoring is available
         """
-        return self.device_type != "unknown"
+        return self.device_type in {"jetson", "nvidia", "raspberry_pi", "intel_rapl"}
 
     def get_metrics(self) -> Optional[PowerMetrics]:
         """Get current power metrics.
@@ -140,7 +198,7 @@ class PowerMonitor:
 
                 metrics = PowerMetrics(
                     timestamp=datetime.now().isoformat(),
-                    device_type="jetson",
+                    device_type=self.device_type_raw or "jetson",
                     total_power_w=total_power,
                     cpu_power_w=cpu_power,
                     gpu_power_w=gpu_power,
@@ -175,7 +233,7 @@ class PowerMonitor:
 
             metrics = PowerMetrics(
                 timestamp=datetime.now().isoformat(),
-                device_type="nvidia",
+                device_type=self.device_type_raw or "nvidia",
                 total_power_w=total_power,
                 gpu_power_w=total_power,
             )
@@ -213,7 +271,7 @@ class PowerMonitor:
 
                 metrics = PowerMetrics(
                     timestamp=datetime.now().isoformat(),
-                    device_type="raspberry_pi",
+                    device_type=self.device_type_raw or "raspberry_pi",
                     total_power_w=estimated_power,
                     soc_power_w=estimated_power,
                 )
@@ -262,7 +320,7 @@ class PowerMonitor:
 
             metrics = PowerMetrics(
                 timestamp=datetime.now().isoformat(),
-                device_type="intel_rapl",
+                device_type=self.device_type_raw or "intel_rapl",
                 total_power_w=total_power if total_power > 0 else None,
                 cpu_power_w=cpu_power if cpu_power > 0 else None,
             )

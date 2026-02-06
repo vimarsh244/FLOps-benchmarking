@@ -118,6 +118,7 @@ def create_client_fn(config: DictConfig) -> Callable:
             partitioner_cfg=config.partitioner,
             batch_size=config.client.batch_size,
             test_fraction=config.evaluation.test_fraction,
+            dataloader_cfg=config.training,
         )
 
         # create model

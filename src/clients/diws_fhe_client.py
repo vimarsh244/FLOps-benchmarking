@@ -1,4 +1,4 @@
-"""Client implementation for FHE-enabled DIWS."""
+"""Client implementation for FHE-enabled DIWS using TenSEAL."""
 
 from __future__ import annotations
 
@@ -7,13 +7,12 @@ import os
 import pickle
 import time
 from collections import Counter
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 
 try:
     import psutil
-
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
@@ -22,24 +21,33 @@ from flwr.common import NDArrays, Scalar
 
 from src.clients.base_client import FlowerClient
 from src.clients.subset_client_trainer import get_subset_client_trainer
-from src.utils.fhe import get_tenseal, load_context
+from src.utils.fhe import get_tenseal, load_client_context
 
 
 class FheDiwsClient(FlowerClient):
-    """Flower client with FHE-enabled DIWS hooks."""
+    """Flower client with FHE-enabled DIWS hooks using TenSEAL."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         fhe_cfg = self.config.strategy.get("fhe", {})
-        self.client_context_path = fhe_cfg.get("client_context_path", "client_context.pkl")
+        client_context_path = fhe_cfg.get("client_context_path", "client_context.pkl")
+        
+        # Resolve context path to absolute path for distributed mode
+        self.client_context_path = self._resolve_context_path(client_context_path)
+        
         self.fhe_metrics_enabled = fhe_cfg.get("metrics_enabled", True)
         self.subset_epochs = int(fhe_cfg.get("subset_epochs", 1))
         self.feasibility_epsilon = float(fhe_cfg.get("feasibility_epsilon", 0.01))
         self.context_load_retries = int(fhe_cfg.get("context_load_retries", 20))
         self.context_load_delay_s = float(fhe_cfg.get("context_load_delay_s", 0.5))
         self.ts = get_tenseal()
-        # load private context for encrypt/decrypt
+        # load private context for encrypt/decrypt (TenSEAL context includes secret key)
         self.context = self._load_context_with_retry(self.client_context_path)
+        
+        # cache for label distribution (computed once)
+        self._label_distribution_cache: Optional[Dict[int, int]] = None
+        # cache for encrypted label distribution (to avoid re-encryption)
+        self._encrypted_label_dist_cache: Optional[Dict[int, bytes]] = None
 
     def _get_process_stats(self):
         if not PSUTIL_AVAILABLE:
@@ -64,29 +72,77 @@ class FheDiwsClient(FlowerClient):
                 metrics[f"{prefix}_mem_rss_mb_delta"] = mem_end - mem_start
         return metrics
 
+    def _resolve_context_path(self, path: str) -> str:
+        """Resolve context path to absolute path.
+        
+        In distributed mode, relative paths are resolved relative to the project root
+        or the remote_path specified in hardware config.
+        """
+        if os.path.isabs(path):
+            return path
+        
+        # Check if running in distributed mode
+        hardware_cfg = self.config.get("hardware", {})
+        if hardware_cfg.get("mode") == "distributed":
+            # Try to use remote_path from deployment config
+            deployment_cfg = hardware_cfg.get("deployment", {})
+            remote_path = deployment_cfg.get("remote_path")
+            
+            if remote_path:
+                # Expand ~ to home directory
+                remote_path = os.path.expanduser(remote_path)
+                return os.path.join(remote_path, path)
+        
+        # Fall back to current working directory for relative paths
+        return os.path.abspath(path)
+
     def _load_context_with_retry(self, path: str):
         last_error = None
-        for _ in range(self.context_load_retries):
+        for attempt in range(self.context_load_retries):
             try:
-                return load_context(path)
+                return load_client_context(path)
             except FileNotFoundError as exc:
                 last_error = exc
+                if attempt == 0:
+                    # On first attempt, provide helpful message
+                    print(f"Waiting for FHE context file at: {path}")
                 time.sleep(self.context_load_delay_s)
+        
+        # Provide helpful error message
         if last_error:
-            raise last_error
-        return load_context(path)
+            error_msg = (
+                f"Failed to load FHE context file after {self.context_load_retries} attempts.\n"
+                f"Expected path: {path}\n"
+                f"\n"
+                f"For distributed/hardware experiments, ensure:\n"
+                f"1. The server has started and created the context file\n"
+                f"2. The context file is in a shared location accessible to all clients\n"
+                f"3. The path in conf/strategy/diws_fhe.yaml matches this location\n"
+                f"\n"
+                f"You may need to manually copy the context file from the server to:\n"
+                f"  {path}\n"
+            )
+            raise FileNotFoundError(error_msg) from last_error
+        
+        return load_client_context(path)
 
     def get_label_distribution(self) -> Dict[int, int]:
+        """Get label distribution, using cache if available."""
+        if self._label_distribution_cache is not None:
+            return self._label_distribution_cache
+
         label_counter = Counter()
         for batch in self.trainloader:
             labels = batch["label"]
             label_counter.update([int(label) for label in labels])
-        return dict(label_counter)
+
+        self._label_distribution_cache = dict(label_counter)
+        return self._label_distribution_cache
 
     def _handle_missing_clients(
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[NDArrays, int, Dict[str, Scalar]]:
-        # decrypt target subset distribution
+        # decrypt target subset distribution using TenSEAL
         encrypted_target = pickle.loads(config["subset_distribution"])
         target_distribution: Dict[int, int] = {}
 
@@ -95,6 +151,7 @@ class FheDiwsClient(FlowerClient):
             start_time, cpu_start, mem_start = self._start_resource_timer()
 
         for label, enc_data in encrypted_target.items():
+            # Decrypt: Result is a vector, take 0th element
             val = self.ts.ckks_vector_from(self.context, enc_data).decrypt()[0]
             target_distribution[int(label)] = max(0, int(round(val)))
 
@@ -128,23 +185,34 @@ class FheDiwsClient(FlowerClient):
             return params, num_examples, metrics
 
         if config.get("current_round", 0) == 1:
-            # encrypt label distribution on round 1
+
+            # encrypt label distribution on round 1 using TenSEAL
+            # use cache if available to avoid re-encryption
+            if self._encrypted_label_dist_cache is not None:
+                encrypted_dist = self._encrypted_label_dist_cache
+                enc_metrics: Dict[str, Scalar] = {"fhe_encrypt_cache_hit": 1.0}
+            else:
+                label_distribution = self.get_label_distribution()
+                encrypted_dist = {}
+
+                enc_metrics: Dict[str, Scalar] = {}
+                if self.fhe_metrics_enabled:
+                    start_time, cpu_start, mem_start = self._start_resource_timer()
+
+                for label, count in label_distribution.items():
+                    encrypted_dist[label] = self.ts.ckks_vector(
+                        self.context, [float(count)]
+                    ).serialize()
+
+                if self.fhe_metrics_enabled:
+                    enc_metrics = self._finish_resource_timer(
+                        "fhe_encrypt_label_dist", start_time, cpu_start, mem_start
+                    )
+
+                # cache the encrypted distribution
+                self._encrypted_label_dist_cache = encrypted_dist
+
             label_distribution = self.get_label_distribution()
-            encrypted_dist = {}
-
-            enc_metrics: Dict[str, Scalar] = {}
-            if self.fhe_metrics_enabled:
-                start_time, cpu_start, mem_start = self._start_resource_timer()
-
-            for label, count in label_distribution.items():
-                encrypted_dist[label] = self.ts.ckks_vector(
-                    self.context, [float(count)]
-                ).serialize()
-
-            if self.fhe_metrics_enabled:
-                enc_metrics = self._finish_resource_timer(
-                    "fhe_encrypt_label_dist", start_time, cpu_start, mem_start
-                )
 
             metrics.update(enc_metrics)
             metrics["label_distribution"] = pickle.dumps(encrypted_dist)
@@ -159,6 +227,8 @@ class FheDiwsClient(FlowerClient):
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[float, int, Dict[str, Scalar]]:
         if "blinded_diff" in config:
+
+            # masked Interactive Protocol Check using TenSEAL
             # decrypt masked diffs and return only the sign
             blinded_diff_map = pickle.loads(config["blinded_diff"])
             is_capped_map = {}
@@ -168,6 +238,10 @@ class FheDiwsClient(FlowerClient):
                 start_time, cpu_start, mem_start = self._start_resource_timer()
 
             for label, enc_diff in blinded_diff_map.items():
+                # Decrypt: (Fair - Stock) * Mask
+                # Mask is positive, so sign is preserved.
+                # If > 0: Capped (Fair > Stock)
+                # If < 0: Capable (Stock > Fair)
                 val = self.ts.ckks_vector_from(self.context, enc_diff).decrypt()[0]
                 is_capped_map[label] = val > 0
 
@@ -181,6 +255,7 @@ class FheDiwsClient(FlowerClient):
             return 0.0, 0, metrics
 
         if "check_global_feasibility" in config:
+            # distributed Target Scaling Check using TenSEAL
             # decrypt masked feasibility checks and return a boolean
             blinded_checks_map = pickle.loads(config["check_global_feasibility"])
             is_feasible = True
@@ -190,7 +265,10 @@ class FheDiwsClient(FlowerClient):
                 start_time, cpu_start, mem_start = self._start_resource_timer()
 
             for _, enc_val in blinded_checks_map.items():
+                # Decrypt: Active - (Dropped * k)
+                # Masked with positive random value
                 val = self.ts.ckks_vector_from(self.context, enc_val).decrypt()[0]
+                # Use epsilon for robustness against FHE noise
                 if val < -self.feasibility_epsilon:
                     is_feasible = False
                     break

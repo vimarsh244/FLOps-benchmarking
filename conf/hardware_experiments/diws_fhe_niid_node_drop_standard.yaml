@@ -1,0 +1,57 @@
+# @package _global_
+# DIWS-FHE with NIID data partitioning (alpha=0.5) and standard node drop on hardware testbed
+
+defaults:
+  - /strategy: diws_fhe
+  - /partitioner: dirichlet_medium
+  - /scenario: node_drop_standard_20clients
+  - /hardware: distributed
+  - /dataset: cifar10
+  - /model: resnet18
+  - /logging: wandb
+  - _self_
+
+experiment:
+  name: diws_fhe_niid_node_drop_standard_hardware
+  seed: 42
+  output_dir: outputs/${experiment.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# hardware testbed has 20 clients (2 vagators + 18 cortalims)
+client:
+  num_clients: 20
+  local_epochs: 1
+  batch_size: 128
+  learning_rate: 0.001
+  optimizer: adam
+  weight_decay: 0.0
+
+# training configuration
+training:
+  device: auto
+  use_amp: false
+  gradient_clip: null
+  cpu_threads: auto
+  interop_threads: auto
+  dataloader_workers: 0
+  pin_memory: auto
+  persistent_workers: false
+  prefetch_factor: 2
+  cudnn_benchmark: auto
+
+# evaluation configuration
+evaluation:
+  test_fraction: 0.2
+  eval_every_n_rounds: 1
+
+server:
+  num_rounds: 50
+  fraction_fit: 0.5
+  fraction_evaluate: 0.5
+  min_fit_clients: 15
+  min_evaluate_clients: 15
+  min_available_clients: 15
+  accept_failures: true
+  
+logging:
+  wandb:
+    tags: [diws_fhe, distributed, cifar10, resnet18, dirichlet_medium, node_drop_standard_20clients]

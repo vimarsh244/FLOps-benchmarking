@@ -1,0 +1,166 @@
+---
+# Build and install OpenFHE and openfhe-python from source on ARM devices
+
+- name: Install OpenFHE on ARM clients
+  hosts: clients
+  become: false
+
+  vars:
+    venv_python_default: "/home/{{ ansible_user_id }}/envs/flops/bin/python"
+    openfhe_repo: "https://github.com/openfheorg/openfhe-development.git"
+    openfhe_python_repo: "https://github.com/openfheorg/openfhe-python.git"
+    openfhe_src_dir: "/home/{{ ansible_user_id }}/openfhe-development"
+    openfhe_python_src_dir: "/home/{{ ansible_user_id }}/openfhe-python"
+    openfhe_install_prefix: "/usr/local"
+    proxy_url: "{{ flops_proxy_url | default('') }}"
+
+  tasks:
+    - name: Skip non-ARM hosts
+      debug:
+        msg: "Skipping {{ inventory_hostname }} (arch={{ ansible_architecture }})"
+      when: ansible_architecture not in ["aarch64", "arm64"]
+
+    - name: Resolve venv python path
+      set_fact:
+        venv_python: "{{ (python_env | default(venv_python_default)) | regex_replace('^~', ansible_env.HOME) }}"
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Install system build dependencies
+      become: true
+      apt:
+        name:
+          - git
+          - build-essential
+          - cmake
+          - python3-dev
+          - libomp5
+          - libomp-dev
+        state: present
+        update_cache: yes
+      when:
+        - ansible_os_family == "Debian"
+        - ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Ensure venv has build tools
+      command: "{{ venv_python }} -m pip install --upgrade pip setuptools wheel"
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Get venv Python version
+      command: "{{ venv_python }} -c \"import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')\""
+      register: venv_python_version
+      changed_when: false
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Get venv site-packages path
+      command: "{{ venv_python }} -c \"import sysconfig; print(sysconfig.get_path('purelib'))\""
+      register: venv_site_packages
+      changed_when: false
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Install base Python dev headers
+      become: true
+      apt:
+        name: python3-dev
+        state: present
+        update_cache: yes
+      when:
+        - ansible_os_family == "Debian"
+        - ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Install versioned Python dev headers
+      become: true
+      apt:
+        name: "python{{ venv_python_version.stdout }}-dev"
+        state: present
+      when:
+        - ansible_os_family == "Debian"
+        - ansible_architecture in ["aarch64", "arm64"]
+      ignore_errors: true
+
+    - name: Install pybind11 for Python bindings
+      command: "{{ venv_python }} -m pip install \"pybind11[global]\""
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Locate pybind11 cmake config
+      command: "{{ venv_python }} -m pybind11 --cmakedir"
+      register: pybind11_cmake_dir
+      changed_when: false
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Clone OpenFHE C++ library
+      git:
+        repo: "{{ openfhe_repo }}"
+        dest: "{{ openfhe_src_dir }}"
+        update: yes
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Configure OpenFHE build
+      command: >
+        cmake -S {{ openfhe_src_dir }} -B {{ openfhe_src_dir }}/build
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_INSTALL_PREFIX={{ openfhe_install_prefix }}
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Build OpenFHE
+      command: cmake --build {{ openfhe_src_dir }}/build -j {{ ansible_processor_vcpus | default(2) }}
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Install OpenFHE
+      become: true
+      command: cmake --install .
+      args:
+        chdir: "{{ openfhe_src_dir }}/build"
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Clone openfhe-python wrapper
+      git:
+        repo: "{{ openfhe_python_repo }}"
+        dest: "{{ openfhe_python_src_dir }}"
+        update: yes
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Remove openfhe-python build directory
+      file:
+        path: "{{ openfhe_python_src_dir }}/build"
+        state: absent
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Configure openfhe-python build
+      command: >
+        cmake -S {{ openfhe_python_src_dir }} -B {{ openfhe_python_src_dir }}/build
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_PREFIX_PATH={{ openfhe_install_prefix }}
+        -DCMAKE_INSTALL_PREFIX={{ venv_site_packages.stdout }}
+        -DPYTHON_EXECUTABLE_PATH={{ venv_python }}
+        -DPython_EXECUTABLE={{ venv_python }}
+        -Dpybind11_DIR={{ pybind11_cmake_dir.stdout }}
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Build openfhe-python
+      command: cmake --build {{ openfhe_python_src_dir }}/build -j {{ ansible_processor_vcpus | default(2) }}
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Install openfhe-python
+      command: cmake --install .
+      args:
+        chdir: "{{ openfhe_python_src_dir }}/build"
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Locate openfhe module path
+      command: "{{ venv_python }} -c \"import glob,sysconfig,os; paths=glob.glob(os.path.join(sysconfig.get_path('purelib'),'openfhe*.so')); print(paths[0] if paths else '')\""
+      register: openfhe_module_so
+      changed_when: false
+      when: ansible_architecture in ["aarch64", "arm64"]
+
+    - name: Copy OpenFHE shared libs next to module
+      shell: >
+        mkdir -p {{ openfhe_module_so.stdout | regex_replace('/[^/]+$','') }}/lib
+        && cp -a /usr/local/lib/libOPENFHE*.so* {{ openfhe_module_so.stdout | regex_replace('/[^/]+$','') }}/lib/
+      when:
+        - ansible_architecture in ["aarch64", "arm64"]
+        - openfhe_module_so.stdout | length > 0
+
+    - name: Display install status
+      debug:
+        msg: "OpenFHE installed on {{ inventory_hostname }} with {{ venv_python }}"
+      when: ansible_architecture in ["aarch64", "arm64"]

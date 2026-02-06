@@ -32,7 +32,7 @@ client:
   # CHANGE THIS FROM 10 TO 20 (or total number of devices you have)
   num_clients: 20  
   local_epochs: 1
-  batch_size: 32
+  batch_size: 128
   learning_rate: 0.001
   optimizer: adam
   weight_decay: 0.0
@@ -42,6 +42,13 @@ training:
   device: auto  # auto, cpu, cuda, mps
   use_amp: false  # automatic mixed precision
   gradient_clip: null  # gradient clipping value
+  cpu_threads: auto  # auto uses all available cpu cores
+  interop_threads: auto  # auto uses all available cpu cores
+  dataloader_workers: 0  # 0 for stability on ARM devices, auto uses all cores (may cause segfaults)
+  pin_memory: auto  # auto enables when cuda is available
+  persistent_workers: false  # requires num_workers > 0
+  prefetch_factor: 2
+  cudnn_benchmark: auto  # auto enables when cuda is available
   
 # evaluation configuration
 evaluation:

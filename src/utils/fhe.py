@@ -71,3 +71,11 @@ def load_context(path: str):
     with open(path, "rb") as f:
         data = f.read()
     return ts.context_from(data)
+
+
+def load_client_context(path: str):
+    """Load a TenSEAL context with secret key for client-side use.
+
+    Returns the context which can be used for both encryption and decryption.
+    """
+    return load_context(path)
