@@ -1,10 +1,10 @@
 # @package _global_
-# DIWS with IID data partitioning on hardware testbed
+# DIWS with IID data partitioning and standard node drop on hardware testbed
 
 defaults:
   - /strategy: diws
   - /partitioner: iid
-  - /scenario: baseline
+  - /scenario: node_drop_standard_20clients
   - /hardware: distributed
   - /dataset: cifar10
   - /model: resnet18
@@ -12,7 +12,7 @@ defaults:
   - _self_
 
 experiment:
-  name: diws_iid_hardware
+  name: diws_iid_node_drop_standard_hardware
   seed: 42
   output_dir: outputs/${experiment.name}/${now:%Y-%m-%d_%H-%M-%S}
 
@@ -54,4 +54,4 @@ server:
 
 logging:
   wandb:
-    tags: [diws, distributed, cifar10, resnet18, iid, baseline]
+    tags: [diws, distributed, cifar10, resnet18, iid, node_drop_standard_20clients]

@@ -2,23 +2,56 @@
 # DIWS-FHE with IID data partitioning on hardware testbed
 
 defaults:
-  - override /strategy: diws_fhe
-  - override /partitioner: iid
-  - override /scenario: baseline
-  - override /hardware: distributed
-  - override /dataset: cifar10
-  - override /model: resnet18
-  - override /logging: wandb
+  - /strategy: diws_fhe
+  - /partitioner: iid
+  - /scenario: baseline
+  - /hardware: distributed
+  - /dataset: cifar10
+  - /model: resnet18
+  - /logging: wandb
+  - _self_
 
 experiment:
   name: diws_fhe_iid_hardware
+  seed: 42
+  output_dir: outputs/${experiment.name}/${now:%Y-%m-%d_%H-%M-%S}
 
 # hardware testbed has 20 clients (2 vagators + 18 cortalims)
 client:
   num_clients: 20
+  local_epochs: 1
+  batch_size: 128
+  learning_rate: 0.001
+  optimizer: adam
+  weight_decay: 0.0
+
+# training configuration
+training:
+  device: auto
+  use_amp: false
+  gradient_clip: null
+  cpu_threads: auto
+  interop_threads: auto
+  dataloader_workers: 0
+  pin_memory: auto
+  persistent_workers: false
+  prefetch_factor: 2
+  cudnn_benchmark: auto
+
+# evaluation configuration
+evaluation:
+  test_fraction: 0.2
+  eval_every_n_rounds: 1
 
 server:
   num_rounds: 50
+  fraction_fit: 0.5
+  fraction_evaluate: 0.5
   min_fit_clients: 15
   min_evaluate_clients: 15
   min_available_clients: 15
+  accept_failures: true
+
+logging:
+  wandb:
+    tags: [diws_fhe, distributed, cifar10, resnet18, iid, baseline]

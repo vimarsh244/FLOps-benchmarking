@@ -221,20 +221,22 @@ def _resolve_config_files(config_files: List[str]) -> List[Tuple[str, str]]:
         path = Path(config_file)
         if not path.is_absolute():
             path = PROJECT_ROOT / path
-        config_name = path.stem
-        config_path = path.parent
-        
-        # Make path relative to src/ since run_distributed.py runs from there
         try:
-            src_dir = PROJECT_ROOT / "src"
-            config_path = config_path.relative_to(PROJECT_ROOT)
-            # Prepend ../ to go up from src/ to project root
-            config_path = Path("..") / config_path
+            conf_root = PROJECT_ROOT / "conf"
+            relative_from_conf = path.relative_to(conf_root)
         except ValueError:
             print(
-                f"⚠ Config path {config_path} is outside the repo; "
-                "ensure it exists on remote devices."
+                f"⚠ Config file {path} is outside conf/. "
+                "Hydra may not resolve other config groups correctly."
             )
+            relative_from_conf = path
+
+        # Hydra: keep config-path at conf/ so all groups are discoverable
+        # and set config-name to the path relative to conf/ (without suffix)
+        config_name = str(relative_from_conf.with_suffix(""))
+
+        # run_distributed.py runs from src/, so config-path should be ../conf
+        config_path = Path("..") / "conf"
         resolved.append((str(config_path), config_name))
     return resolved
 

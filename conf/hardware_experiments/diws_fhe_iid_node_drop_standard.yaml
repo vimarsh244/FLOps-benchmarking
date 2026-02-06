@@ -1,10 +1,16 @@
 # @package _global_
-# DIWS with IID data partitioning on hardware testbed
+# DIWS-FHE with IID data partitioning and standard node drop on hardware testbed
+#
+# IMPORTANT FOR DISTRIBUTED MODE:
+# Before running this experiment, you must distribute the FHE context files to all clients:
+#   ansible-playbook deployment/ansible/sync_fhe_context.yml -i deployment/ansible/inventory.yml
+#
+# This ensures that client_context.pkl is available on all client machines.
 
 defaults:
-  - /strategy: diws
+  - /strategy: diws_fhe
   - /partitioner: iid
-  - /scenario: baseline
+  - /scenario: node_drop_standard_20clients
   - /hardware: distributed
   - /dataset: cifar10
   - /model: resnet18
@@ -12,7 +18,7 @@ defaults:
   - _self_
 
 experiment:
-  name: diws_iid_hardware
+  name: diws_fhe_iid_node_drop_standard_hardware
   seed: 42
   output_dir: outputs/${experiment.name}/${now:%Y-%m-%d_%H-%M-%S}
 
@@ -54,4 +60,4 @@ server:
 
 logging:
   wandb:
-    tags: [diws, distributed, cifar10, resnet18, iid, baseline]
+    tags: [diws_fhe, distributed, cifar10, resnet18, iid, node_drop_standard_20clients]

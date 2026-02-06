@@ -30,7 +30,11 @@ class FheDiwsClient(FlowerClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         fhe_cfg = self.config.strategy.get("fhe", {})
-        self.client_context_path = fhe_cfg.get("client_context_path", "client_context.pkl")
+        client_context_path = fhe_cfg.get("client_context_path", "client_context.pkl")
+        
+        # Resolve context path to absolute path for distributed mode
+        self.client_context_path = self._resolve_context_path(client_context_path)
+        
         self.fhe_metrics_enabled = fhe_cfg.get("metrics_enabled", True)
         self.subset_epochs = int(fhe_cfg.get("subset_epochs", 1))
         self.feasibility_epsilon = float(fhe_cfg.get("feasibility_epsilon", 0.01))
@@ -68,16 +72,58 @@ class FheDiwsClient(FlowerClient):
                 metrics[f"{prefix}_mem_rss_mb_delta"] = mem_end - mem_start
         return metrics
 
+    def _resolve_context_path(self, path: str) -> str:
+        """Resolve context path to absolute path.
+        
+        In distributed mode, relative paths are resolved relative to the project root
+        or the remote_path specified in hardware config.
+        """
+        if os.path.isabs(path):
+            return path
+        
+        # Check if running in distributed mode
+        hardware_cfg = self.config.get("hardware", {})
+        if hardware_cfg.get("mode") == "distributed":
+            # Try to use remote_path from deployment config
+            deployment_cfg = hardware_cfg.get("deployment", {})
+            remote_path = deployment_cfg.get("remote_path")
+            
+            if remote_path:
+                # Expand ~ to home directory
+                remote_path = os.path.expanduser(remote_path)
+                return os.path.join(remote_path, path)
+        
+        # Fall back to current working directory for relative paths
+        return os.path.abspath(path)
+
     def _load_context_with_retry(self, path: str):
         last_error = None
-        for _ in range(self.context_load_retries):
+        for attempt in range(self.context_load_retries):
             try:
                 return load_client_context(path)
             except FileNotFoundError as exc:
                 last_error = exc
+                if attempt == 0:
+                    # On first attempt, provide helpful message
+                    print(f"Waiting for FHE context file at: {path}")
                 time.sleep(self.context_load_delay_s)
+        
+        # Provide helpful error message
         if last_error:
-            raise last_error
+            error_msg = (
+                f"Failed to load FHE context file after {self.context_load_retries} attempts.\n"
+                f"Expected path: {path}\n"
+                f"\n"
+                f"For distributed/hardware experiments, ensure:\n"
+                f"1. The server has started and created the context file\n"
+                f"2. The context file is in a shared location accessible to all clients\n"
+                f"3. The path in conf/strategy/diws_fhe.yaml matches this location\n"
+                f"\n"
+                f"You may need to manually copy the context file from the server to:\n"
+                f"  {path}\n"
+            )
+            raise FileNotFoundError(error_msg) from last_error
+        
         return load_client_context(path)
 
     def get_label_distribution(self) -> Dict[int, int]:

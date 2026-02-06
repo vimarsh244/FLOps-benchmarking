@@ -32,7 +32,7 @@ client:
   # CHANGE THIS FROM 10 TO 20 (or total number of devices you have)
   num_clients: 20  
   local_epochs: 1
-  batch_size: 32
+  batch_size: 128
   learning_rate: 0.001
   optimizer: adam
   weight_decay: 0.0

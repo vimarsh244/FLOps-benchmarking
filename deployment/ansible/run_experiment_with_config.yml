@@ -27,6 +27,12 @@
       WANDB_MODE: "{{ 'online' if (wandb_api_key is defined and wandb_api_key) or lookup('env', 'WANDB_API_KEY') else 'offline' }}"
   
   tasks:
+    - name: Kill any existing process on server port
+      shell: |
+        fuser -k {{ server_port | default(8080) }}/tcp 2>/dev/null || true
+        sleep 1
+      ignore_errors: yes
+
     - name: Start Flower server with Hydra config
       shell: |
         cd {{ repo_path }}

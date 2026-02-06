@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import pickle
 import random
 from concurrent.futures import ThreadPoolExecutor
@@ -48,8 +49,13 @@ class DIWSFHE(Strategy):
         super().__init__()
         self.aggregator_strategy = aggregator_strategy or CustomFedAvg()
         self.substitution_timeout = substitution_timeout
+        
+        # Resolve context paths to absolute paths (will be resolved later with full config)
+        self._server_context_path_template = server_context_path
+        self._client_context_path_template = client_context_path
         self.server_context_path = server_context_path
         self.client_context_path = client_context_path
+        
         self.poly_modulus_degree = poly_modulus_degree
         self.coeff_mod_bit_sizes = coeff_mod_bit_sizes
         self.global_scale_bits = global_scale_bits
@@ -77,11 +83,20 @@ class DIWSFHE(Strategy):
         self.global_parameters = self.aggregator_strategy.initialize_parameters(client_manager)
         if not self.ts:
             self.ts = get_tenseal()
+        
+        # Resolve context paths to absolute paths if they are relative
+        self.server_context_path = os.path.abspath(self._server_context_path_template)
+        self.client_context_path = os.path.abspath(self._client_context_path_template)
+        
         if self.context is None:
             try:
                 self.context = load_context(self.server_context_path)
+                print(f"[DIWS-FHE] Loaded existing server context from: {self.server_context_path}")
             except FileNotFoundError:
                 # create public/server and private/client contexts
+                print(f"[DIWS-FHE] Creating new FHE contexts:")
+                print(f"  Server context: {self.server_context_path}")
+                print(f"  Client context: {self.client_context_path}")
                 create_and_save_context(
                     server_path=self.server_context_path,
                     client_path=self.client_context_path,
@@ -90,6 +105,8 @@ class DIWSFHE(Strategy):
                     global_scale_bits=self.global_scale_bits,
                 )
                 self.context = load_context(self.server_context_path)
+                print(f"[DIWS-FHE] Context files created successfully")
+                print(f"[DIWS-FHE] IMPORTANT: For distributed/hardware mode, copy client_context.pkl to all client machines at the same path!")
         self.cid_to_partition = {}
         self.inv_num_cache = {}
         self.computation_cache = {}
