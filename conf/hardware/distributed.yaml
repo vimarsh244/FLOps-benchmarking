@@ -167,3 +167,7 @@ devices:
     ssh_key: ~/.ssh/id_rsa
     python_env: ~/envs/flops/bin/python
     device_type: raspberry_pi_4b
+
+simulation:
+  verbose: false
+  actor_kwargs: {}

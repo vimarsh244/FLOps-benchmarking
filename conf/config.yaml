@@ -20,7 +20,7 @@ experiment:
 # server configuration
 server:
   num_rounds: 50
-  fraction_fit: 1.0
+  fraction_fit: 1 
   fraction_evaluate: 1.0
   min_fit_clients: 15
   min_evaluate_clients: 15
@@ -31,7 +31,7 @@ server:
 client:
   # CHANGE THIS FROM 10 TO 20 (or total number of devices you have)
   num_clients: 20  
-  local_epochs: 1
+  local_epochs: 3
   batch_size: 32
   learning_rate: 0.001
   optimizer: adam

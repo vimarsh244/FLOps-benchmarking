@@ -1,0 +1,11 @@
+# FedAdam Strategy Configuration
+# Based on https://flower.ai/docs/framework/explanation-differential-privacy.html
+name: dp_fedavg
+
+fraction_fit: 0.1
+min_fit_clients: 10
+min_available_clients: 10
+
+# Differential Privacy settings
+noise_multiplier: 0.28
+clipping_norm: 150
