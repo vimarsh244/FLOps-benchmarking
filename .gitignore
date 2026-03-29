@@ -38,3 +38,5 @@ server_context.pkl.evalrot
 conf/experiment/**/*.yaml
 
 results/
+
+*.egg-info/

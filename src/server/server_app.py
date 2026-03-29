@@ -2,6 +2,9 @@
 
 from typing import Dict, List, Tuple, Optional, Callable, Any
 from collections import OrderedDict
+import os
+import json
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -25,6 +28,8 @@ from src.strategies.scaffold import SCAFFOLD
 from src.strategies.diws import DIWS
 from src.strategies.diws_fhe import DIWSFHE
 from src.strategies.fdms import FDMS
+from src.strategies.dp_fedavg import DPFedAvg
+
 
 # use Flower's built-in adaptive optimizers - they're well-tested
 from flwr.server.strategy import FedAdam, FedYogi, FedAdagrad
@@ -43,6 +48,7 @@ STRATEGY_REGISTRY: Dict[str, type] = {
     "fedadam": FedAdam,
     "fedyogi": FedYogi,
     "fedadagrad": FedAdagrad,
+    "dp_fedavg": DPFedAvg,
 }
 
 
@@ -78,6 +84,26 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
     return aggregated
 
+# for manual metrics logging
+# def log_and_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+#     """Weighted average + save metrics to file."""
+#     aggregated = weighted_average(metrics)
+
+#     if not aggregated:
+#         return aggregated
+
+#     os.makedirs("outputs/manual_metrics", exist_ok=True)
+#     filepath = "outputs/manual_metrics/metrics_log.json"
+
+#     record = {
+#         "time": datetime.now().isoformat(),
+#         "metrics": aggregated
+#     }
+
+#     with open(filepath, "a") as f:
+#         f.write(json.dumps(record) + "\n")
+
+#     return aggregated
 
 def get_initial_parameters(
     model: nn.Module,
@@ -185,6 +211,12 @@ def create_strategy(
         # Flower's FedAdagrad uses 'eta' for server learning rate
         strategy_params["eta"] = config.strategy.get("eta", config.strategy.get("server_lr", 0.1))
         strategy_params["tau"] = config.strategy.get("tau", 1e-9)
+        
+    elif strategy_name == "dp_fedavg":
+        strategy_params["noise_multiplier"] = config.strategy.noise_multiplier
+        strategy_params["clipping_norm"] = config.strategy.clipping_norm
+        strategy_params["num_rounds"] = config.server.num_rounds
+        strategy_params["delta"] = config.strategy.get("delta", 1e-5)
 
     if strategy_name == "diws":
         base_strategy = CustomFedAvg(
