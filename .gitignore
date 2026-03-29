@@ -26,7 +26,12 @@ outputs/
 
 # for fhe
 client_context.pkl
+client_context.pkl.pk
+client_context.pkl.sk
 server_context.pkl
+server_context.pkl.pk
+server_context.pkl.evalmult
+server_context.pkl.evalrot
 
 .env
 

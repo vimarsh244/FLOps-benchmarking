@@ -2,6 +2,7 @@
 
 import time
 import copy
+import os
 from typing import Dict, List, Tuple, Any, Optional
 from collections import OrderedDict
 
@@ -13,6 +14,9 @@ from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar
 
 from omegaconf import DictConfig
+
+
+_RUNTIME_CONFIGURED = False
 
 
 class FlowerClient(NumPyClient):
@@ -52,9 +56,13 @@ class FlowerClient(NumPyClient):
         self.config = config
         self.scenario = scenario_handler
 
+        # runtime tuning (cpu threads, cudnn)
+        self._configure_runtime()
+
         # device setup
         self.device = self._get_device()
         self.model.to(self.device)
+        print(f"[Client {self.partition_id}] Using device: {self.device}")
 
         # training config
         self.local_epochs = config.client.get("local_epochs", 1)
@@ -77,6 +85,45 @@ class FlowerClient(NumPyClient):
                 return torch.device("cpu")
         else:
             return torch.device(device_cfg)
+
+    def _resolve_auto_int(self, value: Any, default: int) -> int:
+        if value is None:
+            return default
+        if isinstance(value, str) and value.lower() == "auto":
+            return default
+        return max(int(value), 1)
+
+    def _configure_runtime(self) -> None:
+        global _RUNTIME_CONFIGURED
+        if _RUNTIME_CONFIGURED:
+            return
+
+        cpu_count = os.cpu_count() or 1
+        training_cfg = self.config.get("training", {})
+
+        cpu_threads_cfg = training_cfg.get("cpu_threads", "auto")
+        interop_threads_cfg = training_cfg.get("interop_threads", "auto")
+
+        if cpu_threads_cfg is not None:
+            cpu_threads = self._resolve_auto_int(cpu_threads_cfg, cpu_count)
+            os.environ.setdefault("OMP_NUM_THREADS", str(cpu_threads))
+            os.environ.setdefault("MKL_NUM_THREADS", str(cpu_threads))
+            torch.set_num_threads(cpu_threads)
+
+        if interop_threads_cfg is not None:
+            interop_threads = self._resolve_auto_int(interop_threads_cfg, cpu_count)
+            try:
+                torch.set_num_interop_threads(interop_threads)
+            except RuntimeError as exc:
+                print(f"[Runtime] interop threads unchanged: {exc}")
+
+        cudnn_cfg = training_cfg.get("cudnn_benchmark", "auto")
+        if cudnn_cfg == "auto":
+            torch.backends.cudnn.benchmark = torch.cuda.is_available()
+        elif cudnn_cfg is not None:
+            torch.backends.cudnn.benchmark = bool(cudnn_cfg)
+
+        _RUNTIME_CONFIGURED = True
 
     def set_parameters(self, parameters: NDArrays) -> None:
         """Set model weights from numpy arrays."""
@@ -309,6 +356,7 @@ def create_client_fn(config: DictConfig):
             partitioner_cfg=config.partitioner,
             batch_size=config.client.batch_size,
             test_fraction=config.evaluation.test_fraction,
+            dataloader_cfg=config.training,
         )
 
         # create model

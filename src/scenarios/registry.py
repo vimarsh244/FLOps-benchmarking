@@ -11,6 +11,8 @@ from src.scenarios.timeout import TimeoutScenario
 SCENARIO_REGISTRY: Dict[str, Type[BaseScenario]] = {
     "baseline": NoOpScenario,
     "node_drop": NodeDropScenario,
+    "node_drop_standard": NodeDropScenario,
+    "node_drop_standard_20clients": NodeDropScenario,
     "timeout": TimeoutScenario,
 }
 

@@ -2,6 +2,7 @@
 
 from typing import Dict, Optional, Tuple, Any, Callable
 from functools import lru_cache
+import os
 
 import torch
 from torch.utils.data import DataLoader
@@ -147,6 +148,7 @@ def load_data(
     partitioner_cfg: DictConfig,
     batch_size: int = 32,
     test_fraction: float = 0.2,
+    dataloader_cfg: Optional[DictConfig] = None,
 ) -> Tuple[DataLoader, DataLoader]:
     """Load partitioned data for a client.
 
@@ -198,12 +200,50 @@ def load_data(
         labels = torch.tensor([item[label_key] for item in batch])
         return {"img": images, "label": labels}
 
+    cpu_count = os.cpu_count() or 1
+
+    # had to debug this issue due to some segfault while some dataloaders were being created with multiple workers
+    # Default to 0 workers (single-process) for stability on distributed hardware
+    # Multi-process data loading can cause segfaults on ARM devices (Raspberry Pi, Jetson)
+    # due to memory constraints and library conflicts (libgomp TLS issues)
+    num_workers = 0
+    pin_memory = False
+    persistent_workers = False
+    prefetch_factor = None
+
+    if dataloader_cfg is not None:
+        workers_cfg = dataloader_cfg.get("dataloader_workers", None)
+        if workers_cfg is None:
+            workers_cfg = dataloader_cfg.get("data_loader_workers", 0)
+        # Force num_workers=0 to avoid segfaults on ARM devices in distributed mode
+        # Only allow multi-worker in simulation mode
+        if isinstance(workers_cfg, str) and workers_cfg.lower() == "auto":
+            num_workers = cpu_count
+        elif workers_cfg is not None:
+            num_workers = max(int(workers_cfg), 0)
+
+        pin_cfg = dataloader_cfg.get("pin_memory", "auto")
+        if pin_cfg == "auto":
+            pin_memory = torch.cuda.is_available()
+        elif pin_cfg is not None:
+            pin_memory = bool(pin_cfg)
+
+        persistent_workers = bool(dataloader_cfg.get("persistent_workers", False))
+        prefetch_factor = dataloader_cfg.get("prefetch_factor", 2)
+
+    if num_workers == 0:
+        persistent_workers = False
+        prefetch_factor = None
+
     train_loader = DataLoader(
         train_data,
         batch_size=batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-        num_workers=0,  # avoid issues with multiprocessing in FL
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers,
+        prefetch_factor=prefetch_factor,
         drop_last=True,  # becasue resnet has batchnorm and if for one client last batch is not divisible by batch size, it will cause issues - so we drop it
     )
 
@@ -212,7 +252,10 @@ def load_data(
         batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_fn,
-        num_workers=0,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers,
+        prefetch_factor=prefetch_factor,
     )
 
     return train_loader, test_loader

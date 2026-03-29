@@ -8,8 +8,12 @@ inplace: true
 
 # fhe settings shared across server and client
 fhe:
+  # Context file paths - these will be resolved to absolute paths
+  # In distributed mode, these should be in a shared location accessible to all clients
+  # For hardware experiments, the client_context.pkl must be copied from server to all clients
   server_context_path: server_context.pkl
   client_context_path: client_context.pkl
+  
   poly_modulus_degree: 16384
   coeff_mod_bit_sizes: [60, 29, 29, 29, 29, 29, 29, 29, 60]
   global_scale_bits: 29

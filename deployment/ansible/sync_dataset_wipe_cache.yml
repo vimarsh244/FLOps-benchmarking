@@ -11,8 +11,8 @@
   vars:
     # Enable Proxy but DISABLE Offline Mode for this task
     proxy_env:
-      http_proxy: "http://10.8.1.221:8888"
-      https_proxy: "http://10.8.1.221:8888"
+      http_proxy: "http://10.1.19.113:8888"
+      https_proxy: "http://10.1.19.113:8888"
       HF_HUB_DISABLE_SSL_VERIFY: "1"
       CURL_CA_BUNDLE: ""
       # Ensure we are ONLINE for this repair step
@@ -30,7 +30,7 @@
           - flwr[simulation]
         virtualenv: "{{ python_env | dirname | dirname }}"
         # Force proxy usage to bypass firewall SSL errors
-        extra_args: "--proxy http://10.8.1.221:8888 --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org"
+        extra_args: "--proxy http://10.1.19.113:8888 --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org"
       environment: "{{ proxy_env }}"
 
     - name: Wipe broken cache (Start Fresh)

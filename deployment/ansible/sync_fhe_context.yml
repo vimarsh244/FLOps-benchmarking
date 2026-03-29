@@ -1,0 +1,57 @@
+# Ansible playbook to sync FHE context files to all client devices
+# Run this before executing diws_fhe experiments in distributed mode
+#
+# Usage:
+#   ansible-playbook deployment/ansible/sync_fhe_context.yml -i deployment/ansible/inventory.yml
+#
+# Prerequisites:
+#   - Server must have already generated the FHE context files
+#   - Run the server once or generate manually with:
+#     python -c "from src.utils.fhe import create_and_save_context; create_and_save_context('server_context.pkl', 'client_context.pkl')"
+
+---
+- name: Generate FHE context files on server if not present
+  hosts: servers
+  gather_facts: false
+  tasks:
+    - name: Check if client_context.pkl exists
+      stat:
+        path: "{{ flops_repo_path }}/client_context.pkl"
+      register: client_ctx
+
+    - name: Generate FHE context files
+      shell: |
+        cd {{ flops_repo_path }}
+        {{ python_env }} -c "from src.utils.fhe import create_and_save_context; create_and_save_context('server_context.pkl', 'client_context.pkl')"
+      when: not client_ctx.stat.exists
+
+    - name: Fetch client_context.pkl to controller
+      fetch:
+        src: "{{ flops_repo_path }}/client_context.pkl"
+        dest: /tmp/fhe_context/
+        flat: true
+
+- name: Distribute FHE client context to all clients
+  hosts: clients
+  gather_facts: false
+  tasks:
+    - name: Create flops-benchmarking directory if missing
+      file:
+        path: "{{ flops_repo_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy client_context.pkl to client
+      copy:
+        src: /tmp/fhe_context/client_context.pkl
+        dest: "{{ flops_repo_path }}/client_context.pkl"
+        mode: '0644'
+
+    - name: Verify context file exists
+      stat:
+        path: "{{ flops_repo_path }}/client_context.pkl"
+      register: ctx_stat
+
+    - name: Show context file info
+      debug:
+        msg: "client_context.pkl exists: {{ ctx_stat.stat.exists }}, size: {{ ctx_stat.stat.size | default('N/A') }} bytes"
