@@ -33,3 +33,5 @@ server_context.pkl
 conf/experiment/**/*.yaml
 
 results/
+
+*.egg-info/

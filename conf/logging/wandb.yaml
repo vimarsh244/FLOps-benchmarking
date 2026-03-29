@@ -6,7 +6,7 @@ wandb:
   # project name in W&B
   project: flops-benchmarking
   # entity (team or username)
-  entity: dashlab  # uses default entity
+  entity:  dashlab # uses default entity
   # run name (auto-generated if null)
   run_name: null
   # run tags
@@ -14,7 +14,7 @@ wandb:
   # run notes
   notes: null
   # sync mode: online, offline, disabled
-  mode: online
+  mode: offline
   # log frequency (every n rounds)
   log_every_n_rounds: 1
 

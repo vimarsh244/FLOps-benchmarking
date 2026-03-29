@@ -84,25 +84,26 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
     return aggregated
 
-def log_and_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
-    """Weighted average + save metrics to file."""
-    aggregated = weighted_average(metrics)
+# for manual metrics logging
+# def log_and_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+#     """Weighted average + save metrics to file."""
+#     aggregated = weighted_average(metrics)
 
-    if not aggregated:
-        return aggregated
+#     if not aggregated:
+#         return aggregated
 
-    os.makedirs("outputs/manual_metrics", exist_ok=True)
-    filepath = "outputs/manual_metrics/metrics_log.json"
+#     os.makedirs("outputs/manual_metrics", exist_ok=True)
+#     filepath = "outputs/manual_metrics/metrics_log.json"
 
-    record = {
-        "time": datetime.now().isoformat(),
-        "metrics": aggregated
-    }
+#     record = {
+#         "time": datetime.now().isoformat(),
+#         "metrics": aggregated
+#     }
 
-    with open(filepath, "a") as f:
-        f.write(json.dumps(record) + "\n")
+#     with open(filepath, "a") as f:
+#         f.write(json.dumps(record) + "\n")
 
-    return aggregated
+#     return aggregated
 
 def get_initial_parameters(
     model: nn.Module,
@@ -155,8 +156,8 @@ def create_strategy(
         "accept_failures": config.server.accept_failures,
         "initial_parameters": initial_parameters,
         "evaluate_fn": evaluate_fn,
-        "fit_metrics_aggregation_fn": log_and_average,
-        "evaluate_metrics_aggregation_fn": log_and_average,
+        "fit_metrics_aggregation_fn": weighted_average,
+        "evaluate_metrics_aggregation_fn": weighted_average,
     }
 
     # strategy-specific parameters
@@ -214,7 +215,8 @@ def create_strategy(
     elif strategy_name == "dp_fedavg":
         strategy_params["noise_multiplier"] = config.strategy.noise_multiplier
         strategy_params["clipping_norm"] = config.strategy.clipping_norm
-
+        strategy_params["num_rounds"] = config.server.num_rounds
+        strategy_params["delta"] = config.strategy.get("delta", 1e-5)
 
     if strategy_name == "diws":
         base_strategy = CustomFedAvg(
