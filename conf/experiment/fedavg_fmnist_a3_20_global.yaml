@@ -1,0 +1,48 @@
+# @package _global_
+# FedAvg (global model) on Fashion-MNIST under A3 model replacement attack (20% adversaries)
+
+defaults:
+  - override /dataset: fmnist
+  - override /model: ditto_cnn
+  - override /strategy: fedavg
+  - override /partitioner: pathological
+  - override /scenario: model_replacement
+  - override /logging: wandb
+
+experiment:
+  name: fedavg_fmnist_a3_20_global
+  seed: 0
+
+server:
+  num_rounds: 500
+  fraction_fit: 0.02
+  fraction_evaluate: 1.0
+  min_fit_clients: 10
+  min_evaluate_clients: 10
+  min_available_clients: 500
+  accept_failures: true
+
+client:
+  num_clients: 500
+  local_epochs: 1
+  local_iters: 2
+  batch_size: 16
+  learning_rate: 0.05
+  optimizer: sgd
+  momentum: 0.0
+  weight_decay: 0.0
+
+partitioner:
+  num_classes_per_partition: 5
+
+training:
+  device: auto
+
+evaluation:
+  test_fraction: 0.2
+
+# keep scenario in sync with experiment-level settings
+scenario:
+  num_clients: ${client.num_clients}
+  clients_per_round: ${server.min_fit_clients}
+  adversary_fraction: 0.2

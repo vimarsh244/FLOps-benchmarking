@@ -1,0 +1,18 @@
+# Model Replacement Attack Scenario (A3)
+# Marks a subset of clients as adversaries and scales their local updates.
+name: model_replacement
+_target_: src.scenarios.model_replacement.ModelReplacementScenario
+
+enabled: true
+
+adversary_fraction: 0.2
+num_clients: 500
+
+# deterministic adversary assignment
+selection_mode: first_n  # first_n | random
+fixed_adversary_ids: []
+seed: 0
+
+# if null, uses clients_per_round
+replacement_scale: null
+clients_per_round: 10

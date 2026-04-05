@@ -5,6 +5,7 @@ import time
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 from flwr.client import NumPyClient
@@ -60,6 +61,7 @@ class FlowerClient(NumPyClient):
 
         # training config
         self.local_epochs = config.client.get("local_epochs", 1)
+        self.local_iters = config.client.get("local_iters", 0)  # 0 = use epochs; >0 = SGD steps
         self.learning_rate = config.client.get("learning_rate", 0.01)
         self.batch_size = config.client.get("batch_size", 32)
 
@@ -117,6 +119,40 @@ class FlowerClient(NumPyClient):
             if actual_delay > 0:
                 time.sleep(min(actual_delay, 10.0))  # cap at 10 seconds
 
+    def _get_attack_config(self, current_round: int) -> Dict[str, Any]:
+        """Fetch scenario-provided attack metadata for this client/round."""
+        if self.scenario is None:
+            return {}
+        return self.scenario.get_client_config(self.partition_id, current_round)
+
+    def _apply_model_replacement_if_needed(
+        self,
+        current_round: int,
+        initial_parameters: NDArrays,
+        updated_parameters: NDArrays,
+    ) -> Tuple[NDArrays, bool]:
+        """Apply A3 model replacement scaling to this client's update when configured.
+
+        The outgoing model becomes: w_out = w_in + s * (w_local - w_in).
+        """
+        attack_cfg = self._get_attack_config(current_round)
+        is_adversary = bool(attack_cfg.get("is_adversary", False))
+        attack_type = str(attack_cfg.get("attack_type", ""))
+
+        if not is_adversary or attack_type != "model_replacement":
+            return updated_parameters, False
+
+        scale = float(attack_cfg.get("replacement_scale", 1.0))
+        if abs(scale - 1.0) < 1e-12:
+            return updated_parameters, True
+
+        attacked: NDArrays = []
+        for w_in, w_out in zip(initial_parameters, updated_parameters):
+            w_in_arr = np.asarray(w_in, dtype=np.float32)
+            w_out_arr = np.asarray(w_out, dtype=np.float32)
+            attacked.append(w_in_arr + np.float32(scale) * (w_out_arr - w_in_arr))
+        return attacked, True
+
     def fit(
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[NDArrays, int, Dict[str, Scalar]]:
@@ -153,20 +189,38 @@ class FlowerClient(NumPyClient):
         if "cluster_id" in config:
             print(f"[Client {self.partition_id}] Assigned cluster {config['cluster_id']}")
 
-        # train
-        train_loss = self._train(
-            epochs=self.local_epochs,
-            proximal_mu=config.get("proximal_mu", 0.0),
-        )
+        # train (use step-based training when local_iters > 0)
+        proximal_mu = config.get("proximal_mu", 0.0)
+        if self.local_iters > 0:
+            train_loss = self._train_steps(
+                steps=self.local_iters,
+                proximal_mu=proximal_mu,
+            )
+        else:
+            train_loss = self._train(
+                epochs=self.local_epochs,
+                proximal_mu=proximal_mu,
+            )
 
         end_time = time.time()
         runtime = end_time - start_time
         print(f"[Client {self.partition_id}] Training took {runtime:.2f}s")
 
+        local_params = self.get_parameters({})
+        outgoing_params, is_adversary = self._apply_model_replacement_if_needed(
+            current_round=current_round,
+            initial_parameters=parameters,
+            updated_parameters=local_params,
+        )
+
         return (
-            self.get_parameters({}),
+            outgoing_params,
             len(self.trainloader.dataset),
-            {"train_loss": train_loss, "runtime": runtime},
+            {
+                "train_loss": train_loss,
+                "runtime": runtime,
+                "is_adversary": float(is_adversary),
+            },
         )
 
     def evaluate(
@@ -198,7 +252,18 @@ class FlowerClient(NumPyClient):
         end_time = time.time()
         runtime = end_time - start_time
 
-        return loss, len(self.valloader.dataset), {"accuracy": accuracy, "runtime": runtime}
+        attack_cfg = self._get_attack_config(config.get("current_round", 0))
+        is_adversary = bool(attack_cfg.get("is_adversary", False))
+
+        return (
+            loss,
+            len(self.valloader.dataset),
+            {
+                "accuracy": accuracy,
+                "runtime": runtime,
+                "is_adversary": float(is_adversary),
+            },
+        )
 
     def _train(self, epochs: int, proximal_mu: float = 0.0) -> float:
         """Train the model for specified epochs.
@@ -266,6 +331,83 @@ class FlowerClient(NumPyClient):
                 num_batches += 1
 
         return running_loss / max(num_batches, 1)
+
+    def _train_steps(self, steps: int, proximal_mu: float = 0.0) -> float:
+        """Train the model for a fixed number of SGD steps.
+
+        Unlike _train which iterates over full epochs, this method runs
+        exactly steps mini-batch gradient updates, cycling over the
+        dataloader as needed.
+        
+        Args:
+            steps: Number of SGD steps to perform
+            proximal_mu: Proximal term coefficient
+
+        Returns:
+            Average training loss
+        """
+        self.model.to(self.device)
+        self.model.train()
+
+        criterion = nn.CrossEntropyLoss().to(self.device)
+
+        # optimizer
+        optimizer_name = self.config.client.get("optimizer", "sgd").lower()
+        weight_decay = self.config.client.get("weight_decay", 0.0)
+
+        if optimizer_name == "adam":
+            optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=self.learning_rate,
+                weight_decay=weight_decay,
+            )
+        elif optimizer_name == "sgd":
+            momentum = self.config.client.get("momentum", 0.0)
+            optimizer = torch.optim.SGD(
+                self.model.parameters(),
+                lr=self.learning_rate,
+                momentum=momentum,
+                weight_decay=weight_decay,
+            )
+        else:
+            raise ValueError(f"Unknown optimizer: {optimizer_name}. Use 'sgd' or 'adam'.")
+
+        running_loss = 0.0
+        step_count = 0
+        data_iter = iter(self.trainloader)
+
+        while step_count < steps:
+            # cycle over dataloader
+            try:
+                batch = next(data_iter)
+            except StopIteration:
+                data_iter = iter(self.trainloader)
+                batch = next(data_iter)
+
+            images = batch["img"].to(self.device)
+            labels = batch["label"].to(self.device)
+
+            optimizer.zero_grad()
+
+            outputs = self.model(images)
+            loss = criterion(outputs, labels)
+
+            # proximal term: (mu/2) * ||w - w_global||^2
+            if proximal_mu > 0 and self._global_params is not None:
+                proximal_term = 0.0
+                for local_param, global_param in zip(
+                    self.model.parameters(), self._global_params
+                ):
+                    proximal_term += (local_param - global_param.to(self.device)).norm(2).pow(2)
+                loss = loss + (proximal_mu / 2) * proximal_term
+
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            step_count += 1
+
+        return running_loss / max(step_count, 1)
 
     def _test(self) -> Tuple[float, float]:
         """Evaluate the model on validation data.

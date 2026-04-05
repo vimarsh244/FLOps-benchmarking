@@ -1,0 +1,29 @@
+# Fashion MNIST Dataset Configuration
+name: fmnist
+_target_: src.datasets.loader.load_data
+
+# dataset identifier for flwr-datasets
+dataset_name: zalando-datasets/fashion_mnist
+num_classes: 10
+
+# keys used in the huggingface dataset
+image_key: image
+label_key: label
+
+# image properties
+image_size: 28
+channels: 1
+
+# normalization values
+normalize:
+  mean: [0.2860]
+  std: [0.3530]
+
+# data augmentation
+augmentation:
+  train:
+    random_crop: false
+    random_horizontal_flip: false
+  test:
+    random_crop: false
+    random_horizontal_flip: false

@@ -1,0 +1,5 @@
+# Ditto Paper CNN Model Configuration
+# Matches the CNN used in the Ditto paper
+# for Fashion MNIST and FEMNIST
+name: ditto_cnn
+_target_: src.models.ditto_cnn.DittoCNN

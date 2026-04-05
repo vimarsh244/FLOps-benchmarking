@@ -1,0 +1,9 @@
+# Ditto Strategy Configuration
+name: ditto
+_target_: src.strategies.ditto.Ditto
+
+# Ditto specific parameters
+ditto_mu: 0.1              # proximal term coefficient for personalized model
+personal_epochs: null      # if null, uses client.local_epochs
+evaluate_personalized: true  # evaluate personalized model if available
+local_iters: null          # if set, use N SGD steps per round instead of epochs

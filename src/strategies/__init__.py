@@ -4,6 +4,7 @@
 from flwr.server.strategy import FedAdagrad, FedAdam, FedYogi
 
 from src.strategies.clusteredfl import CustomClusteredFL
+from src.strategies.ditto import Ditto
 from src.strategies.diws import DIWS
 from src.strategies.fdms import FDMS
 from src.strategies.fedavg import CustomFedAvg
@@ -21,6 +22,7 @@ __all__ = [
     "DIWS",
     "FDMS",
     "FedPer",
+    "Ditto",
     "FedAdam",
     "FedYogi",
     "FedAdagrad",

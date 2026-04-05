@@ -18,6 +18,7 @@ from flwr.server.strategy import FedAdagrad, FedAdam, FedYogi, Strategy
 from omegaconf import DictConfig
 
 from src.strategies.clusteredfl import CustomClusteredFL
+from src.strategies.ditto import Ditto
 from src.strategies.diws import DIWS
 from src.strategies.fdms import FDMS
 from src.strategies.fedavg import CustomFedAvg
@@ -36,6 +37,7 @@ STRATEGY_REGISTRY: Dict[str, type] = {
     "diws": DIWS,
     "fdms": FDMS,
     "fedper": FedPer,
+    "ditto": Ditto,
     # use Flower's built-in FedOpt strategies
     "fedadam": FedAdam,
     "fedyogi": FedYogi,
@@ -167,6 +169,14 @@ def create_strategy(
     elif strategy_name == "fedper":
         strategy_params["personal_layer_count"] = config.strategy.get("personal_layer_count", 0)
         strategy_params["inplace"] = config.strategy.get("inplace", True)
+
+    elif strategy_name == "ditto":
+        strategy_params["ditto_mu"] = config.strategy.get("ditto_mu", 0.1)
+        strategy_params["personal_epochs"] = config.strategy.get("personal_epochs", None)
+        strategy_params["evaluate_personalized"] = config.strategy.get(
+            "evaluate_personalized", True
+        )
+        strategy_params["local_iters"] = config.strategy.get("local_iters", None)
 
     elif strategy_name == "fedadam":
         # Flower's FedAdam uses 'eta' for server learning rate

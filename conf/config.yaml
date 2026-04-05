@@ -31,6 +31,7 @@ server:
 client:
   num_clients: 10
   local_epochs: 1
+  local_iters: 0  # 0 = use local_epochs; >0 = use this many SGD steps per round
   batch_size: 32
   learning_rate: 0.001
   optimizer: adam

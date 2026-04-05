@@ -34,6 +34,14 @@ def ensure_rgb(img):
     return img
 
 
+def ensure_grayscale(img):
+    """Convert image to grayscale if needed (for single-channel datasets)."""
+    if isinstance(img, Image.Image):
+        if img.mode != "L":
+            img = img.convert("L")
+    return img
+
+
 def get_transforms(
     dataset_cfg: DictConfig,
     is_train: bool = True,
@@ -49,8 +57,12 @@ def get_transforms(
     """
     transforms_list = []
 
-    # first, ensure image is RGB (handle grayscale images)
-    transforms_list.append(Lambda(ensure_rgb))
+    # handle channel conversion: grayscale (1-ch) vs RGB (3-ch)
+    channels = dataset_cfg.get("channels", 3)
+    if channels == 1:
+        transforms_list.append(Lambda(ensure_grayscale))
+    else:
+        transforms_list.append(Lambda(ensure_rgb))
 
     # resize if needed (for ViT or Tiny-ImageNet)
     aug_cfg = dataset_cfg.augmentation.train if is_train else dataset_cfg.augmentation.test

@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Type
 import torch.nn as nn
 from omegaconf import DictConfig
 
+from src.models.ditto_cnn import DittoCNN
 from src.models.simple_cnn import SimpleCNN, SimpleCNNLarge
 from src.models.resnet import ResNet18, ResNet34, ResNet50, ResNetCIFAR
 from src.models.vit import ViT, ViTSmall
@@ -11,6 +12,7 @@ from src.models.vit import ViT, ViTSmall
 
 # registry mapping model names to classes
 MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
+    "ditto_cnn": DittoCNN,
     "simplecnn": SimpleCNN,
     "simplecnn_large": SimpleCNNLarge,
     "resnet18": ResNet18,
@@ -61,6 +63,8 @@ def get_model(
     model_kwargs = {"num_classes": num_classes}
     
     if model_name in ["simplecnn"]:
+        model_kwargs["in_channels"] = in_channels
+    elif model_name == "ditto_cnn":
         model_kwargs["in_channels"] = in_channels
     elif model_name in ["simplecnn_large"]:
         model_kwargs["in_channels"] = in_channels

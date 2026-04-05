@@ -4,6 +4,7 @@ from typing import Dict, Type, Optional
 from omegaconf import DictConfig
 
 from src.scenarios.base import BaseScenario, NoOpScenario
+from src.scenarios.model_replacement import ModelReplacementScenario
 from src.scenarios.node_drop import NodeDropScenario
 from src.scenarios.timeout import TimeoutScenario
 
@@ -13,6 +14,7 @@ SCENARIO_REGISTRY: Dict[str, Type[BaseScenario]] = {
     "baseline": NoOpScenario,
     "node_drop": NodeDropScenario,
     "timeout": TimeoutScenario,
+    "model_replacement": ModelReplacementScenario,
 }
 
 

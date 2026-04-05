@@ -252,6 +252,21 @@ class CustomFedAvg(Strategy):
         if not self.accept_failures and failures:
             return None, {}
 
+        # if clients report adversary tags, compute robustness metrics on benign clients only.
+        tagged_results = [
+            (client, res)
+            for client, res in results
+            if "is_adversary" in res.metrics
+        ]
+        if tagged_results:
+            benign_results = [
+                (client, res)
+                for client, res in results
+                if float(res.metrics.get("is_adversary", 0.0)) < 0.5
+            ]
+            if benign_results:
+                results = benign_results
+
         loss_aggregated = weighted_loss_avg(
             [
                 (evaluate_res.num_examples, evaluate_res.loss)
@@ -264,6 +279,9 @@ class CustomFedAvg(Strategy):
         if self.evaluate_metrics_aggregation_fn:
             eval_metrics = [(res.num_examples, res.metrics) for _, res in results]
             metrics_aggregated = self.evaluate_metrics_aggregation_fn(eval_metrics)
+
+        if tagged_results:
+            metrics_aggregated["benign_eval_clients"] = float(len(results))
 
         # log eval metrics to wandb
         log_round_metrics(server_round, evaluate_metrics=metrics_aggregated, loss=loss_aggregated)

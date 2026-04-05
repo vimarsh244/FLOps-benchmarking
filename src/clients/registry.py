@@ -27,6 +27,7 @@ CLIENT_REGISTRY = {
     "clusteredfl": FlowerClient,
     "scaffold": ScaffoldClient,
     "fedper": PersonalizedClient,
+    "ditto": PersonalizedClient,
     "personalized": PersonalizedClient,
 }
 
@@ -67,8 +68,8 @@ def get_client_type_for_strategy(strategy_name: str) -> str:
     if "scaffold" in strategy_lower:
         return "scaffold"
 
-    # fedper requires personalized client
-    if "fedper" in strategy_lower:
+    # personalization strategies
+    if "fedper" in strategy_lower or "ditto" in strategy_lower:
         return "personalized"
 
     # all other strategies use the base client
@@ -135,7 +136,7 @@ def create_client_fn(config: DictConfig) -> Callable:
             partition_id=partition_id,
             config=config,
             scenario_handler=scenario,
-            context=context, 
+            context=context,  # pass context for state persistence
         )
 
         return client.to_client()
