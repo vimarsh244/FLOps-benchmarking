@@ -1,5 +1,5 @@
 # Standard Node Drop Scenario Configuration
-# Drops client partition ID 1 from round 7 through 30, rejoins at 31
+# Drops client partition ID 1 from round 28 through 123, rejoins at 124
 name: node_drop_standard
 _target_: src.scenarios.node_drop.NodeDropScenario
 
@@ -9,8 +9,8 @@ enabled: true
 # format: list of {client_ids: [ids], disconnect_round: int, rejoin_round: int}
 drop_events:
   - client_ids: [1]
-    disconnect_round: 7
-    rejoin_round: 31
+    disconnect_round: 28
+    rejoin_round: 124
 
 # alternatively, use automatic mode based on partition id
 auto_mode:
@@ -18,6 +18,6 @@ auto_mode:
   # clients with partition_id >= start_partition_id will disconnect
   start_partition_id: 2
   # disconnect round = partition_id + offset
-  disconnect_offset: 3
+  disconnect_offset: 12
   # all clients rejoin at this round
-  rejoin_round: 31
+  rejoin_round: 124

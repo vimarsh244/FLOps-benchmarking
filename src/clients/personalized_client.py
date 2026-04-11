@@ -51,6 +51,17 @@ class PersonalizedClient(FlowerClient):
         # store
         self.context.state[key] = ArrayRecord(numpy_ndarrays=numpy_params)
 
+    def _is_full_state_compatible(self, params: Optional[List[torch.Tensor]]) -> bool:
+        """Check whether cached params match the model full state_dict layout."""
+        if params is None or len(params) != self._num_params:
+            return False
+
+        state_dict = self.model.state_dict()
+        for name, tensor in zip(self._param_names, params):
+            if tuple(tensor.shape) != tuple(state_dict[name].shape):
+                return False
+        return True
+
     def _load_personal_state(self) -> None:
         """Load personal parameters from context.state if available."""
         if self.context is None:
@@ -72,7 +83,14 @@ class PersonalizedClient(FlowerClient):
             try:
                 record = self.context.state["ditto_key"]
                 numpy_params = record.to_numpy_ndarrays()
-                self._personal_model_params = [torch.tensor(p) for p in numpy_params]
+                candidate = [torch.tensor(p) for p in numpy_params]
+                if self._is_full_state_compatible(candidate):
+                    self._personal_model_params = candidate
+                else:
+                    self._personal_model_params = None
+                    print(
+                        f"[Client {self.partition_id}] Warning: Ignoring incompatible Ditto state"
+                    )
             except Exception as e:
                 print(f"[Client {self.partition_id}] Warning: Failed to load Ditto state: {e}")
 
@@ -194,8 +212,15 @@ class PersonalizedClient(FlowerClient):
 
             # initialize personalized model from w^t (server model) on first round
             if self._personal_model_params is None:
+                state = self.model.state_dict()
                 self._personal_model_params = [
-                    p.detach().cpu().clone() for p in global_anchor
+                    state[name].detach().cpu().clone() for name in self._param_names
+                ]
+
+            if not self._is_full_state_compatible(self._personal_model_params):
+                state = self.model.state_dict()
+                self._personal_model_params = [
+                    state[name].detach().cpu().clone() for name in self._param_names
                 ]
 
             # load personalized model and set w^t as the proximal anchor
@@ -213,8 +238,9 @@ class PersonalizedClient(FlowerClient):
                 )
 
             # store personalized params
+            state = self.model.state_dict()
             self._personal_model_params = [
-                p.detach().cpu().clone() for p in self.model.parameters()
+                state[name].detach().cpu().clone() for name in self._param_names
             ]
             # persist personal params to context.state for next round
             self._save_personal_state("ditto_key", self._personal_model_params)
@@ -270,7 +296,7 @@ class PersonalizedClient(FlowerClient):
         if strategy == "ditto":
             start_time = time.time()
             use_personal = bool(config.get("evaluate_personalized", True))
-            if use_personal and self._personal_model_params is not None:
+            if use_personal and self._is_full_state_compatible(self._personal_model_params):
                 self.set_parameters([p.cpu().numpy() for p in self._personal_model_params])
             else:
                 self.set_parameters(parameters)

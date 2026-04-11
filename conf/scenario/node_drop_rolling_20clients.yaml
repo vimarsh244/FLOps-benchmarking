@@ -6,47 +6,47 @@ _target_: src.scenarios.node_drop.NodeDropScenario
 enabled: true
 
 # rolling drop pattern: ~3-4 clients offline at any time (15-20%)
-# wave 1: clients 0,1,2 drop at round 5, rejoin at round 13
-# wave 2: clients 3,4,5 drop at round 10, rejoin at round 18
-# wave 3: clients 6,7,8 drop at round 15, rejoin at round 23
-# wave 4: clients 9,10,11 drop at round 20, rejoin at round 28
-# wave 5: clients 12,13,14 drop at round 25, rejoin at round 33
-# wave 6: clients 15,16,17 drop at round 30, rejoin at round 38
-# wave 7: clients 18,19,0 drop at round 35, rejoin at round 43
-# wave 8: clients 1,2,3 drop at round 40, rejoin at round 48
+# wave 1: clients 0,1,2 drop at round 20, rejoin at round 52
+# wave 2: clients 3,4,5 drop at round 40, rejoin at round 72
+# wave 3: clients 6,7,8 drop at round 60, rejoin at round 92
+# wave 4: clients 9,10,11 drop at round 80, rejoin at round 112
+# wave 5: clients 12,13,14 drop at round 100, rejoin at round 132
+# wave 6: clients 15,16,17 drop at round 120, rejoin at round 152
+# wave 7: clients 18,19,0 drop at round 140, rejoin at round 172
+# wave 8: clients 1,2,3 drop at round 160, rejoin at round 192
 drop_events:
   # wave 1
   - client_ids: [0, 1, 2]
-    disconnect_round: 5
-    rejoin_round: 13
+    disconnect_round: 20
+    rejoin_round: 52
   # wave 2
   - client_ids: [3, 4, 5]
-    disconnect_round: 10
-    rejoin_round: 18
+    disconnect_round: 40
+    rejoin_round: 72
   # wave 3
   - client_ids: [6, 7, 8]
-    disconnect_round: 15
-    rejoin_round: 23
+    disconnect_round: 60
+    rejoin_round: 92
   # wave 4
   - client_ids: [9, 10, 11]
-    disconnect_round: 20
-    rejoin_round: 28
+    disconnect_round: 80
+    rejoin_round: 112
   # wave 5
   - client_ids: [12, 13, 14]
-    disconnect_round: 25
-    rejoin_round: 33
+    disconnect_round: 100
+    rejoin_round: 132
   # wave 6
   - client_ids: [15, 16, 17]
-    disconnect_round: 30
-    rejoin_round: 38
+    disconnect_round: 120
+    rejoin_round: 152
   # wave 7
   - client_ids: [18, 19, 0]
-    disconnect_round: 35
-    rejoin_round: 43
+    disconnect_round: 140
+    rejoin_round: 172
   # wave 8
   - client_ids: [1, 2, 3]
-    disconnect_round: 40
-    rejoin_round: 48
+    disconnect_round: 160
+    rejoin_round: 192
 
 auto_mode:
   enabled: false

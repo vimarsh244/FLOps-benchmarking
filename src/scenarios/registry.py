@@ -33,7 +33,11 @@ def get_scenario(
         ValueError: If scenario name is not in registry
     """
     name = scenario_cfg.get("name", "baseline").lower()
-    
+
+    # treat all node-drop variants (e.g., node_drop_standard) as NodeDropScenario
+    if name.startswith("node_drop"):
+        name = "node_drop"
+
     if name not in SCENARIO_REGISTRY:
         available = ", ".join(SCENARIO_REGISTRY.keys())
         raise ValueError(f"Unknown scenario: {name}. Available: {available}")
